@@ -1,0 +1,11 @@
+{
+  "groups": ["Group 1", "Group 2", "Group 3", "Group 4", "Group 5"],
+  "sites": [
+    {"name": "Site 1", "dist": null},
+    {"name": "Site 2", "dist": null},
+    {"name": "Site 3", "dist": null},
+    {"name": "Site 4", "dist": null},
+    {"name": "Site 5", "dist": null}
+  ],
+  "calibration": {"a": null, "b": 0, "unit": "s"}
+}

@@ -1,0 +1,1771 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="River survey">
+<meta name="theme-color" content="#1F6F78">
+<title>River survey: testing the Bradshaw model</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#EDF2F0; --panel:#F8FAF9; --ink:#15302E; --muted:#56706C; --line:#C9D6D3;
+  --water:#1F6F78; --water-soft:#CFE4E6; --silt:#8F6F42; --silt-soft:#EADFCC;
+  --flag:#F2C230; --good:#2D7A3E; --bad:#B03A2E; --warn:#9A6B00;
+  --body:"Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+  --head:"Barlow Condensed", "Arial Narrow", "Segoe UI", sans-serif;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0F1C1C; --panel:#162726; --ink:#E3ECEA; --muted:#9DB3AF; --line:#2C4442;
+    --water:#58B8C2; --water-soft:#1C3A3D; --silt:#C9A36D; --silt-soft:#3A2F20;
+    --good:#6BC47D; --bad:#E57A6E; --warn:#E0B04A;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0F1C1C; --panel:#162726; --ink:#E3ECEA; --muted:#9DB3AF; --line:#2C4442;
+  --water:#58B8C2; --water-soft:#1C3A3D; --silt:#C9A36D; --silt-soft:#3A2F20;
+  --good:#6BC47D; --bad:#E57A6E; --warn:#E0B04A;
+}
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 var(--body)}
+.wrap{max-width:1100px;margin:0 auto;padding:1.25rem 1rem 3rem}
+h1,h2,h3{font-family:var(--head);font-weight:700;line-height:1.1;margin:0}
+h1{font-size:clamp(2rem,5vw,3.1rem);letter-spacing:.01em}
+h2{font-size:1.6rem;margin-bottom:.75rem}
+h3{font-size:1.2rem;margin-bottom:.4rem}
+p{margin:.3rem 0 .8rem;max-width:72ch}
+.status{color:var(--muted);font-size:.95rem}
+.status b{color:var(--ink)}
+
+/* hero strip */
+.strip{margin:1rem 0 1.5rem;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:.75rem;overflow-x:auto}
+.strip svg{display:block;width:100%;min-width:620px;height:auto}
+
+/* tabs */
+.tabs{display:flex;gap:.25rem;border-bottom:2px solid var(--line);margin-bottom:1.25rem;overflow-x:auto}
+.tabs button{font:600 1.15rem var(--head);background:none;border:0;color:var(--muted);padding:.55rem .9rem;border-bottom:4px solid transparent;margin-bottom:-2px;cursor:pointer;white-space:nowrap}
+.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--flag)}
+.tabs button:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid var(--flag);outline-offset:2px}
+.panel{display:none}.panel.on{display:block}
+
+/* form */
+.grid{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:1.25rem;align-items:start}
+@media (max-width:820px){.grid{grid-template-columns:1fr}}
+fieldset{border:1px solid var(--line);border-radius:12px;padding:.9rem 1rem 1rem;margin:0 0 1rem;background:var(--panel)}
+legend{font:600 1.2rem var(--head);padding:0 .35rem}
+.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:.75rem}
+label{display:block;font-weight:700;font-size:.92rem;margin-bottom:.2rem}
+.hint{display:block;font-weight:400;color:var(--muted);font-size:.83rem}
+input,select,textarea{width:100%;font:inherit;color:var(--ink);background:var(--bg);border:1.5px solid var(--line);border-radius:8px;padding:.5rem .6rem}
+textarea{min-height:3.2rem;resize:vertical}
+.actions{display:flex;flex-wrap:wrap;gap:.6rem;margin-top:.25rem}
+.btn{font:700 1rem var(--body);border-radius:999px;padding:.6rem 1.2rem;cursor:pointer;border:2px solid var(--ink);background:var(--ink);color:var(--bg)}
+.btn.ghost{background:transparent;color:var(--ink)}
+.btn.small{padding:.3rem .75rem;font-size:.88rem;border-width:1.5px}
+.btn.danger{border-color:var(--bad);color:var(--bad);background:transparent}
+.msg{min-height:1.4rem;font-size:.95rem;margin-top:.5rem}
+.msg.err{color:var(--bad)}.msg.ok{color:var(--good)}
+
+/* live readout */
+.readout{position:sticky;top:calc(env(safe-area-inset-top,0px) + .75rem);background:var(--water);color:#fff;border-radius:14px;padding:1rem 1.1rem}
+:root[data-theme="dark"] .readout{color:#0F1C1C}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .readout{color:#0F1C1C}}
+.readout h3{color:inherit}
+.readout dl{margin:.5rem 0 0;display:grid;grid-template-columns:1fr auto;gap:.35rem .75rem}
+.readout dt{font-size:.9rem;opacity:.85}
+.readout dd{margin:0;font:600 1.25rem var(--head);text-align:right}
+.readout .note{font-size:.8rem;opacity:.85;margin-top:.8rem}
+
+/* table */
+.scroll{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
+table{border-collapse:collapse;width:100%;font-size:.92rem}
+th,td{padding:.5rem .65rem;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+th{font:600 1rem var(--head);color:var(--muted);vertical-align:bottom}
+th:first-child,td:first-child{text-align:left}
+tbody tr:last-child td{border-bottom:0}
+td.act{display:flex;gap:.35rem;justify-content:flex-end}
+.empty{padding:2rem 1rem;text-align:center;color:var(--muted)}
+
+/* analysis */
+.anal{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:1.25rem}
+@media (max-width:820px){.anal{grid-template-columns:1fr}}
+.chartbox{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:.75rem}
+.chartbox svg{width:100%;height:auto;display:block}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:1rem}
+.stat .big{font:700 2.6rem var(--head);line-height:1}
+.verdict{display:inline-block;font-weight:700;padding:.15rem .6rem;border-radius:999px;font-size:.9rem}
+.v-yes{background:color-mix(in srgb,var(--good) 18%,transparent);color:var(--good)}
+.v-no{background:color-mix(in srgb,var(--bad) 18%,transparent);color:var(--bad)}
+.v-weak{background:color-mix(in srgb,var(--warn) 20%,transparent);color:var(--warn)}
+.v-na{background:var(--line);color:var(--muted)}
+.export{margin-top:1.5rem}
+.xs{margin:.9rem 0 0}.xs svg{width:100%;height:auto;display:block;background:var(--bg);border:1px solid var(--line);border-radius:10px}
+.xs figcaption{margin-top:.35rem}
+.powers svg{width:100%;height:auto;display:block}
+table.peb th,table.peb td{text-align:left;padding:.35rem .5rem}
+table.peb td:first-child{font:600 1.1rem var(--head);width:3.5rem;text-align:center}
+table.peb input,table.peb select{min-width:7rem;padding:.4rem .5rem}
+.thumbs{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:.6rem;margin-top:.5rem}
+.thumb{position:relative;margin:0;background:var(--bg);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.thumb img{display:block;width:100%;aspect-ratio:4/3;object-fit:cover;background:var(--line)}
+.thumb figcaption{font-size:.8rem;padding:.3rem .45rem;color:var(--muted)}
+.thumb button{position:absolute;top:.3rem;right:.3rem;border:0;border-radius:999px;width:1.9rem;height:1.9rem;background:rgba(0,0,0,.6);color:#fff;font-size:1.1rem;cursor:pointer;line-height:1}
+.gsite{margin-bottom:1.25rem}.gsite h3{margin-bottom:.4rem}
+.thumb a{display:block}
+.topline{display:flex;flex-wrap:wrap;gap:.5rem 1.5rem;align-items:center;justify-content:space-between}
+.topline .status{margin:.3rem 0}
+.filter{display:flex;align-items:center;gap:.5rem}.filter label{margin:0}.filter select{width:auto;min-width:10rem}
+.sync{margin:.2rem 0 0;padding:.45rem .8rem;border-radius:10px;font-size:.93rem;background:color-mix(in srgb,var(--warn) 18%,transparent);color:var(--ink)}
+.sync.ok{background:color-mix(in srgb,var(--good) 15%,transparent)}
+.lockbar{background:var(--silt-soft);border-left:5px solid var(--silt);padding:.7rem 1rem;border-radius:8px;margin-bottom:1rem;font-weight:700}
+.sheetbar{display:flex;flex-wrap:wrap;gap:.6rem 1rem;align-items:center;justify-content:space-between;background:var(--panel);border:1px dashed var(--line);border-radius:12px;padding:.7rem 1rem;font-size:.93rem;color:var(--muted)}
+.lbl{display:block;font-weight:700;font-size:.92rem;margin-bottom:.3rem}
+.ticks{display:flex;flex-wrap:wrap;gap:.4rem 1.1rem}
+.ticks label{display:flex;align-items:center;gap:.4rem;font-weight:400;margin:0}
+.ticks input{width:1.15rem;height:1.15rem;accent-color:var(--water)}
+.ok-c{color:var(--good);font-weight:700}.no-c{color:var(--bad);font-weight:700}.part-c{color:var(--warn);font-weight:700}
+.flag{background:var(--panel);border:1px solid var(--line);border-left:5px solid var(--warn);border-radius:8px;padding:.6rem .9rem;margin-bottom:.5rem}
+.flag.info{border-left-color:var(--water)}.flag.err{border-left-color:var(--bad)}
+.flag b{font-family:var(--head);font-size:1.05rem}
+.gp{display:flex;flex-wrap:wrap;gap:.6rem;margin-bottom:.9rem}
+.gp div{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:.5rem .8rem}
+.gp strong{font-family:var(--head);font-size:1.15rem;display:block}
+fieldset:disabled{opacity:.6}
+.tabs{position:sticky;top:0;z-index:5;background:var(--bg);padding-top:env(safe-area-inset-top,0px)}
+.draftbar{display:flex;flex-wrap:wrap;gap:.5rem 1rem;align-items:center;justify-content:space-between;background:color-mix(in srgb,var(--water) 12%,transparent);border-radius:10px;padding:.6rem 1rem;margin:0 0 1rem}
+.xs-side{display:none;margin-top:1rem}
+.xs-side svg{width:100%;height:auto;display:block;background:var(--bg);border-radius:10px}
+@media (min-width:821px){.xs-side{display:block}}
+@media (pointer:coarse){
+  .btn,.btn.small{min-height:44px;padding-left:1.1rem;padding-right:1.1rem}
+  .tabs button{min-height:48px;padding:.6rem 1.1rem}
+  input,select{min-height:46px}
+  .ticks label{min-height:44px}
+  .ticks input{width:1.5rem;height:1.5rem}
+  .thumb button{width:2.6rem;height:2.6rem;font-size:1.4rem}
+  table.peb input,table.peb select{min-height:44px}
+  td.act{gap:.5rem}
+  *{-webkit-tap-highlight-color:transparent}
+}
+.modebar{display:flex;flex-wrap:wrap;gap:.5rem 1rem;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:.75rem 1rem;margin:0 0 1rem}
+.seg{display:inline-flex;border:2px solid var(--ink);border-radius:999px;overflow:hidden}
+.seg button{font:700 .95rem var(--body);border:0;background:transparent;color:var(--ink);padding:.5rem 1rem;cursor:pointer;min-height:44px}
+.seg button[aria-checked="true"]{background:var(--ink);color:var(--bg)}
+.mx td,.mx th{text-align:center}.mx td:first-child,.mx th:first-child{text-align:left}
+input[readonly]{background:var(--panel);color:var(--muted)}
+.step{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:1rem 1.1rem;margin-bottom:1rem}
+.step h3{display:flex;gap:.6rem;align-items:baseline}
+.step h3 .n{font:700 1rem var(--head);background:var(--flag);color:#15302E;border-radius:999px;min-width:1.8rem;height:1.8rem;display:inline-flex;align-items:center;justify-content:center}
+.formula{font:1.15rem/1.9 "Cambria Math","STIX Two Math","Times New Roman",serif;overflow-x:auto;padding:.3rem 0}
+.frac{display:inline-flex;flex-direction:column;vertical-align:middle;text-align:center;margin:0 .25rem}
+.frac>span:first-child{border-bottom:1.5px solid currentColor;padding:0 .35rem}
+.frac>span:last-child{padding:0 .35rem}
+table.sp td,table.sp th{text-align:center}table.sp td:first-child,table.sp th:first-child{text-align:left}
+table.sp tfoot td{font-weight:700;border-top:2px solid var(--ink)}
+.tie{color:var(--warn);font-weight:700}
+.bigrs{font:700 3rem var(--head);line-height:1}
+#csvOut{display:none;min-height:10rem;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.8rem;margin-top:.6rem}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>River survey: testing the Bradshaw model</h1>
+  <div class="topline">
+    <p class="status" id="status">Loading saved sites…</p>
+    <div class="filter"><label for="grpSel">Show</label><select id="grpSel"><option value="">All groups</option></select></div>
+  </div>
+  <p class="sync" id="sync" role="status" aria-live="polite" hidden></p>
+
+  <div class="strip" aria-label="Bradshaw model with your survey sites plotted from source to mouth">
+    <svg id="strip" viewBox="0 0 1000 250" role="img"></svg>
+  </div>
+
+  <div class="tabs" role="tablist">
+    <button role="tab" aria-selected="true" data-tab="record" id="tab-record">Record a site</button>
+    <button role="tab" aria-selected="false" data-tab="sites" id="tab-sites">All sites</button>
+    <button role="tab" aria-selected="false" data-tab="test" id="tab-test">Test the model</button>
+    <button role="tab" aria-selected="false" data-tab="spear" id="tab-spear">Spearman's rank</button>
+    <button role="tab" aria-selected="false" data-tab="check" id="tab-check">Check the data</button>
+    <button role="tab" aria-selected="false" data-tab="teacher" id="tab-teacher" hidden>Teacher</button>
+  </div>
+
+  <!-- RECORD -->
+  <section class="panel on" id="p-record" role="tabpanel">
+    <div class="lockbar" id="lockBanner" hidden>Your teacher has locked this survey. You can look at the data, but not change it.</div>
+    <div class="sheetbar">
+      <span>No signal at the river, or a phone battery gone? Use the paper recording sheet and type it in later.</span>
+      <button class="btn ghost small" type="button" id="sheetBtn">Download paper recording sheet (PDF)</button>
+    </div>
+    <div class="msg" id="sheetMsg" role="status"></div>
+    <div class="draftbar" id="draftBar" hidden><span id="draftText">Unsaved work from earlier has been restored.</span><button class="btn ghost small" type="button" id="draftDiscard">Start a fresh site instead</button></div>
+    <div class="grid">
+      <form id="form" autocomplete="off" novalidate>
+        <fieldset>
+          <legend>Site</legend>
+          <div class="row" id="pickRow" hidden style="margin-bottom:.75rem">
+            <div><label for="f-group-sel">Your group</label><select id="f-group-sel"></select></div>
+            <div style="grid-column:span 2"><label for="f-pick">Which site are you at?</label><select id="f-pick"></select></div>
+          </div>
+          <div class="row">
+            <div><label for="f-name">Site name or number</label><input id="f-name" required placeholder="Site 1"></div>
+            <div><label for="f-dist">Distance from source <span class="hint">metres (m)</span></label><input id="f-dist" type="number" inputmode="decimal" step="any" min="0"></div>
+            <div id="groupFree"><label for="f-group">Group</label><input id="f-group" placeholder="Group A"></div>
+            <div><label for="f-weather">Weather</label><input id="f-weather" placeholder="Overcast, dry"></div>
+          </div>
+          <div class="row" style="margin-top:.75rem;align-items:end">
+            <div><label for="f-lat">GPS latitude</label><input id="f-lat" type="number" inputmode="decimal" step="any" placeholder="50.2006"></div>
+            <div><label for="f-lon">GPS longitude</label><input id="f-lon" type="number" inputmode="decimal" step="any" placeholder="8.5773"></div>
+            <div><button class="btn ghost" type="button" id="gpsBtn" style="width:100%">Use my location</button></div>
+          </div>
+          <div class="msg" id="gpsMsg" role="status"></div>
+          <div style="margin-top:.4rem">
+            <span class="lbl">Site conditions <span class="hint">tick all that apply</span></span>
+            <div class="ticks" id="conds">
+              <label><input type="checkbox" value="bridge"> Bridge nearby</label>
+              <label><input type="checkbox" value="weir"> Weir or dam</label>
+              <label><input type="checkbox" value="reinforced"> Reinforced banks</label>
+              <label><input type="checkbox" value="tributary"> Tributary joins upstream</label>
+              <label><input type="checkbox" value="rain"> Rain in last 48 hours</label>
+            </div>
+          </div>
+          <div class="row" style="margin-top:.6rem">
+            <div><label for="f-land">Main land use beside the river</label>
+              <select id="f-land"><option value="">Choose…</option><option>Woodland</option><option>Farmland</option><option>Parkland</option><option>Urban</option><option>Other</option></select></div>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Channel cross-section</legend>
+          <div class="row">
+            <div><label for="f-width">Wetted width <span class="hint">water edge to water edge, m</span></label><input id="f-width" type="number" inputmode="decimal" step="any" min="0"></div>
+            <div><label for="f-grad">Gradient <span class="hint">clinometer reading, degrees (°)</span></label><input id="f-grad" type="number" inputmode="decimal" step="any"></div>
+          </div>
+          <div style="margin-top:.75rem">
+            <label for="f-depths">Depth readings <span class="hint">cm, taken at equal intervals across the channel, separated by spaces or commas. Don't include the 0 at each bank.</span></label>
+            <input id="f-depths" inputmode="decimal" placeholder="12 18 25 22 15">
+          </div>
+          <figure class="xs">
+            <svg id="xsec" viewBox="0 0 600 250" role="img" aria-label="Cross-section of the channel"></svg>
+            <figcaption class="hint">Cross-section looking downstream, left bank on the left. Vertical scale is exaggerated so the depths are visible. Numbered dots are the bed load pieces.</figcaption>
+          </figure>
+        </fieldset>
+
+        <fieldset>
+          <legend>Velocity</legend>
+          <div class="row">
+            <div><label for="f-method">How was velocity measured?</label>
+              <select id="f-method">
+                <option value="counts">Flow meter: revolutions counted over a time</option>
+                <option value="direct">Flow meter: reads velocity directly (m/s)</option>
+                <option value="float">Float timed over a distance</option>
+              </select></div>
+            <div><label for="f-clock">Time of measurement <span class="hint">time of day</span></label><input id="f-clock" type="time"></div>
+          </div>
+
+          <div class="vm" data-m="counts" style="margin-top:.75rem">
+            <div class="row">
+              <div style="grid-column:span 2"><label for="f-counts">Revolutions <span class="hint">counter reading for each attempt</span></label><input id="f-counts" inputmode="decimal" placeholder="142 150 138"></div>
+              <div><label for="f-ctimes">Time recorded <span class="hint">seconds per attempt, or one value if all the same</span></label><input id="f-ctimes" inputmode="decimal" placeholder="30"></div>
+            </div>
+            <p class="hint" id="calNote" style="margin-top:.6rem"></p>
+          </div>
+
+          <div class="vm" data-m="direct" style="margin-top:.75rem">
+            <label for="f-vel">Velocity readings <span class="hint">m/s, one per attempt</span></label><input id="f-vel" inputmode="decimal" placeholder="0.32 0.35 0.30">
+          </div>
+
+          <div class="vm" data-m="float" style="margin-top:.75rem">
+            <div class="row">
+              <div><label for="f-fdist">Float distance <span class="hint">length of measured stretch, m</span></label><input id="f-fdist" type="number" inputmode="decimal" step="any" min="0" placeholder="5"></div>
+              <div style="grid-column:span 2"><label for="f-times">Float times <span class="hint">seconds, one per attempt</span></label><input id="f-times" inputmode="decimal" placeholder="8.2 7.9 8.5"></div>
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset id="calBox">
+          <legend>Flow meter calibration</legend>
+          <p class="hint" style="margin-top:0" id="calIntro">Copy the formula from your flow meter's calibration sheet. This applies to every site, so set it once.</p>
+          <div class="row" style="align-items:end">
+            <div><label for="c-a">Velocity = a × rate + b <span class="hint">a</span></label><input id="c-a" type="number" inputmode="decimal" step="any"></div>
+            <div><label for="c-b"><span class="hint">b (m/s)</span></label><input id="c-b" type="number" inputmode="decimal" step="any" placeholder="0"></div>
+            <div><label for="c-unit"><span class="hint">rate is revolutions</span></label>
+              <select id="c-unit"><option value="s">per second</option><option value="min">per minute</option></select></div>
+          </div>
+          <div class="actions" style="margin-top:.75rem"><button class="btn ghost small" type="button" id="calSave">Save calibration</button></div>
+          <div class="msg" id="calMsg" role="status"></div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Bed load sample</legend>
+          <p class="hint" style="margin-top:0">Collect one piece at each point as you work across the channel. Measure the longest (a) axis with a ruler, then find the smallest square on the size gauge board that the piece will pass through. Match its shape to the Powers roundness scale.</p>
+          <div class="powers" aria-label="Powers roundness scale">
+            <svg viewBox="0 0 600 96" role="img" id="powersSvg"></svg>
+          </div>
+          <div class="scroll" style="margin-top:.75rem">
+            <table class="peb">
+              <thead><tr><th>Piece</th><th>Distance from left bank (m)</th><th>Length, a-axis (mm)</th><th>Size gauge <span class="hint">smallest square it passes through</span></th><th>Powers roundness</th></tr></thead>
+              <tbody id="pebBody"></tbody>
+            </table>
+          </div>
+          <div class="actions" style="margin-top:.6rem"><button class="btn ghost small" type="button" id="addPeb">Add another piece</button></div>
+          <figure class="xs"><svg id="pebBar" viewBox="0 0 600 150" role="img" aria-label="Divided bar graph of roundness for this site"></svg></figure>
+        </fieldset>
+
+        <fieldset id="photoBox">
+          <legend>Photos</legend>
+          <p class="hint" style="margin-top:0">Add photos of the channel, the bed load sample or the equipment in use. Photos are resized before uploading so they save quickly on a phone signal.</p>
+          <div class="row" style="align-items:end">
+            <div><label for="ph-cap">What does the photo show?</label>
+              <select id="ph-cap"><option>Channel, looking upstream</option><option>Channel, looking downstream</option><option>Cross-section</option><option>Bed load sample</option><option>Flow meter in use</option><option>Other</option></select></div>
+            <div><label class="btn ghost" for="ph-file" style="text-align:center;margin:0">Choose photos</label>
+              <input id="ph-file" type="file" accept="image/*" multiple style="position:absolute;width:1px;height:1px;opacity:0"></div>
+          </div>
+          <div class="msg" id="phMsg" role="status" aria-live="polite"></div>
+          <div class="thumbs" id="thumbs"></div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Notes</legend>
+          <textarea id="f-notes" placeholder="Weather, land use, anything unusual at this site"></textarea>
+        </fieldset>
+
+        <div class="actions">
+          <button class="btn" type="submit" id="saveBtn">Save site</button>
+          <button class="btn ghost" type="button" id="cancelBtn" hidden>Cancel editing</button>
+          <button class="btn ghost" type="button" id="clearBtn">Clear form</button>
+        </div>
+        <div class="msg" id="formMsg" role="status" aria-live="polite"></div>
+      </form>
+
+      <aside class="readout" aria-live="polite">
+        <h3>Calculated for this site</h3>
+        <dl id="live"></dl>
+        <div class="xs-side"><svg id="xsecSide" viewBox="0 0 600 250" role="img" aria-label="Cross-section of the channel"></svg></div>
+        <p class="note">Velocity is the mean of your flow meter readings (float times are multiplied by 0.85 to correct for faster surface flow). Area and wetted perimeter are worked out from your depth profile, with 0 cm at each bank.</p>
+      </aside>
+    </div>
+  </section>
+
+  <!-- SITES -->
+  <section class="panel" id="p-sites" role="tabpanel">
+    <h2>All sites, source to mouth</h2>
+    <div class="scroll" id="tableWrap"></div>
+    <div class="export">
+      <div class="actions">
+        <button class="btn ghost" type="button" id="csvBtn">Download CSV</button>
+        <button class="btn ghost" type="button" id="csvShowBtn">Show CSV to copy</button>
+      </div>
+      <div class="stat" style="margin-top:1rem" id="xferBox">
+        <h3>Survey files</h3>
+        <p id="xferIntro">Export saves every site, including photos, as one file. Import adds sites from files exported by the offline app.</p>
+        <div class="actions">
+          <button class="btn" type="button" id="exportBtn">Export survey file</button>
+          <label class="btn ghost" for="importFile" id="importLbl" style="margin:0">Import survey files</label>
+          <input id="importFile" type="file" accept=".json,application/json" multiple style="position:absolute;width:1px;height:1px;opacity:0">
+        </div>
+        <div class="msg" id="xferMsg" role="status" aria-live="polite"></div>
+      </div>
+      <textarea id="csvOut" readonly aria-label="CSV data"></textarea>
+      <div class="msg" id="csvMsg" role="status"></div>
+    </div>
+    <h2 style="margin-top:2rem">Site photos</h2>
+    <div id="gallery"></div>
+  </section>
+
+  <!-- TEST -->
+  <section class="panel" id="p-test" role="tabpanel">
+    <h2>Does the river follow Bradshaw?</h2>
+    <div class="modebar">
+      <span class="lbl" style="margin:0">When several groups measured the same site:</span>
+      <div class="seg" role="radiogroup" aria-label="How to combine groups" id="combineSeg">
+        <button type="button" role="radio" data-mode="avg" aria-checked="true">Use the class average</button>
+        <button type="button" role="radio" data-mode="all" aria-checked="false">Show every group</button>
+      </div>
+      <p class="hint" id="modeHint" style="margin:0;flex-basis:100%"></p>
+    </div>
+    <p>Each variable is tested against distance from source with Spearman's rank correlation (r<sub>s</sub>). The critical value is at the 95% level, one-tailed, because the model predicts the direction of change. You need at least 5 sites.</p>
+    <div class="anal">
+      <div>
+        <label for="varSel">Variable to plot</label>
+        <select id="varSel" style="max-width:320px;margin-bottom:.75rem"></select>
+        <div class="chartbox"><svg id="chart" viewBox="0 0 640 380" role="img"></svg></div>
+        <p class="hint" style="margin-top:.4rem">Circles are natural sites. Squares are sites with a bridge, weir or reinforced banks, which can explain results that don't fit the pattern.</p>
+      </div>
+      <div class="stat" id="statBox"></div>
+    </div>
+    <h2 style="margin-top:2rem">Spread of the bed load at each site</h2>
+    <p>Box plots show the whole sample, not just the average. The box covers the middle half of the pieces (the interquartile range), the line inside is the median, the dot is the mean, and the whiskers reach the smallest and largest pieces. A narrowing box downstream means the load is becoming more sorted.</p>
+    <label for="boxSel">Measurement</label>
+    <select id="boxSel" style="max-width:320px;margin-bottom:.75rem">
+      <option value="len">Length, a-axis (mm)</option><option value="gauge">Size gauge (mm)</option><option value="round">Powers roundness (1–6)</option>
+    </select>
+    <div class="chartbox"><svg id="boxPlot" viewBox="0 0 700 200" role="img" aria-label="Box plots of bed load by site"></svg></div>
+    <div class="scroll" id="boxTable" style="margin-top:.75rem"></div>
+
+    <h2 style="margin-top:2rem">Bed load roundness at each site</h2>
+    <p>Each bar shows what share of the pieces collected at a site fell into each Powers category. Sites run from source (top) to mouth (bottom). If Bradshaw is right, the rounder colours should take up more of each bar downstream.</p>
+    <div class="chartbox"><svg id="divBar" viewBox="0 0 700 200" role="img" aria-label="Divided bar graph of bed load roundness by site"></svg></div>
+    <div class="actions" style="margin-top:.6rem"><button class="btn ghost small" type="button" id="divPct">Show counts</button></div>
+    <h2 style="margin-top:2rem">Summary for every variable</h2>
+    <div class="scroll" id="summaryWrap"></div>
+  </section>
+
+  <!-- SPEARMAN -->
+  <section class="panel" id="p-spear" role="tabpanel">
+    <h2>Spearman's rank calculator</h2>
+    <p>Works through the test step by step, the same way you would by hand, so you can check your own working or copy the method into your write-up.</p>
+    <div class="modebar">
+      <span class="lbl" style="margin:0">Data:</span>
+      <div class="seg" role="radiogroup" aria-label="Data source" id="spSrc">
+        <button type="button" role="radio" data-src="survey" aria-checked="true">Our survey</button>
+        <button type="button" role="radio" data-src="own" aria-checked="false">Enter my own</button>
+      </div>
+    </div>
+
+    <div id="spSurvey">
+      <div class="row">
+        <div><label for="spX">First variable (x)</label><select id="spX"></select></div>
+        <div><label for="spY">Second variable (y)</label><select id="spY"></select></div>
+      </div>
+      <p class="hint" id="spSurveyNote" style="margin-top:.5rem"></p>
+    </div>
+
+    <div id="spOwn" hidden>
+      <div class="row">
+        <div><label for="spXName">Name of x</label><input id="spXName" placeholder="Distance from source (m)"></div>
+        <div><label for="spYName">Name of y</label><input id="spYName" placeholder="Width (m)"></div>
+        <div><label for="spDir">What do you expect?</label>
+          <select id="spDir"><option value="1">y increases as x increases</option><option value="-1">y decreases as x increases</option><option value="0">A relationship, direction unknown</option></select></div>
+      </div>
+      <div class="scroll" style="margin-top:.8rem">
+        <table class="peb"><thead><tr><th>#</th><th>Label</th><th>x</th><th>y</th><th></th></tr></thead><tbody id="spRows"></tbody></table>
+      </div>
+      <div class="actions" style="margin-top:.6rem">
+        <button class="btn ghost small" type="button" id="spAdd">Add a row</button>
+        <button class="btn ghost small" type="button" id="spClear">Clear all</button>
+      </div>
+    </div>
+
+    <div id="spOut" style="margin-top:1.5rem"></div>
+  </section>
+
+  <!-- CHECK -->
+  <section class="panel" id="p-check" role="tabpanel">
+    <h2>Progress</h2>
+    <p>A site is complete when it has its location, cross-section, gradient, velocity and 10 bed load pieces with a size and a roundness score.</p>
+    <div id="groupProgress"></div>
+    <div class="scroll" id="progressWrap"></div>
+
+    <h2 style="margin-top:2rem">Reliability checks</h2>
+    <p>These flags point to results worth checking or discussing in your evaluation. A flag doesn't mean the data is wrong.</p>
+    <div id="flags"></div>
+
+    <h2 style="margin-top:2rem">Groups at the same site</h2>
+    <p>Where two groups measured the same site, their results are compared here. A large difference suggests a problem with method, equipment or timing.</p>
+    <div id="compare"></div>
+  </section>
+
+  <!-- TEACHER -->
+  <section class="panel" id="p-teacher" role="tabpanel">
+    <h2>Teacher controls</h2>
+    <div class="stat" style="margin-bottom:1rem">
+      <h3>Groups and sites for the trip</h3>
+      <p>Set these up before the trip. Students then pick their group and the site from lists instead of typing them, so all four groups' results line up at each site.</p>
+      <span class="lbl">Groups</span>
+      <div class="modebar" style="max-width:520px">
+        <span class="lbl" style="margin:0">How many groups?</span>
+        <div class="seg" role="radiogroup" aria-label="Number of groups" id="grpCount">
+          <button type="button" role="radio" data-n="1" aria-checked="false">1</button><button type="button" role="radio" data-n="2" aria-checked="false">2</button><button type="button" role="radio" data-n="3" aria-checked="false">3</button><button type="button" role="radio" data-n="4" aria-checked="false">4</button><button type="button" role="radio" data-n="5" aria-checked="true">5</button>
+        </div>
+      </div>
+      <div class="scroll" style="max-width:520px">
+        <table class="peb"><thead><tr><th>#</th><th>Group name</th><th></th></tr></thead><tbody id="setGroups"></tbody></table>
+      </div>
+      <div class="actions" style="margin-top:.6rem"><button class="btn ghost small" type="button" id="addSetGroup">Add a group</button></div>
+      <span class="lbl" style="margin-top:1rem">Sites</span>
+      <div class="scroll" style="margin-top:.9rem">
+        <table class="peb"><thead><tr><th>#</th><th>Site name</th><th>Distance from source (m)</th><th></th></tr></thead><tbody id="setSites"></tbody></table>
+      </div>
+      <div class="actions" style="margin-top:.7rem">
+        <button class="btn ghost small" type="button" id="addSetSite">Add a site</button>
+        <button class="btn" type="button" id="saveSetup">Save groups and sites</button>
+      </div>
+      <div class="msg" id="setupMsg" role="status"></div>
+    </div>
+    <h2 style="margin-top:1.5rem">Who has done what</h2>
+    <div class="scroll" id="matrix" style="margin-bottom:1.5rem"></div>
+    <div class="stat" style="max-width:640px">
+      <h3>Lock the survey</h3>
+      <p id="lockText">The survey is open. Students can add, edit and delete sites.</p>
+      <button class="btn" type="button" id="lockBtn">Lock the survey</button>
+      <div class="msg" id="lockMsg" role="status"></div>
+    </div>
+    <div class="stat" style="max-width:640px;margin-top:1rem">
+      <h3>Flow meter calibration</h3>
+      <p>Only you can change the calibration. Set it in the <b>Record a site</b> tab, under the velocity section.</p>
+    </div>
+    <h2 style="margin-top:2rem">Which groups still have work to do</h2>
+    <div id="teacherProgress"></div>
+  </section>
+</div>
+
+<script>
+(function(){
+"use strict";
+const LS_KEY = "bradshaw-sites-v1";
+const CORR = 0.85;
+let sites = [];
+let db = null, shared = false, editingId = null;
+
+// ---------- helpers ----------
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const nums = s => String(s || "").split(/[\s,;]+/).map(x => x.trim()).filter(Boolean).map(Number).filter(Number.isFinite);
+const num = v => { const n = parseFloat(v); return Number.isFinite(n) ? n : null; };
+const mean = a => a.length ? a.reduce((x,y)=>x+y,0)/a.length : null;
+const fmt = (v, d=2) => v == null || !Number.isFinite(v) ? "–" : Number(v).toFixed(d);
+const uid = () => "s" + Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+
+// ---------- calibration ----------
+const CAL_KEY = "bradshaw-cal-v1";
+let cal = (() => { try { return JSON.parse(localStorage.getItem(CAL_KEY)) || {a:null,b:0,unit:"s"}; } catch(e){ return {a:null,b:0,unit:"s"}; } })();
+const methodOf = s => s.velMethod || (s.floatDist != null || (s.times||[]).length ? "float" : "counts");
+
+// ---------- calculations ----------
+function compute(s){
+  if (s._computed) return s._computed;
+  const w = num(s.width), dcm = (s.depths||[]).filter(x=>x>=0), r = {};
+  if (w && w > 0 && dcm.length){
+    const d = dcm.map(x => x/100), sp = w/(d.length+1), prof = [0, ...d, 0];
+    let area = 0, wp = 0;
+    for (let i=0;i<prof.length-1;i++){ area += sp*(prof[i]+prof[i+1])/2; wp += Math.hypot(sp, prof[i+1]-prof[i]); }
+    r.area = area; r.wp = wp; r.meanDepth = area/w; r.hr = area/wp; r.maxDepth = Math.max(...d);
+  }
+  r.width = w;
+  const m = methodOf(s);
+  if (m === "float"){
+    const tt = (s.times||[]).filter(x=>x>0), t = mean(tt), fd = num(s.floatDist);
+    if (t && fd) { r.vSurf = fd/t; r.velocity = r.vSurf*CORR; r.velList = tt.map(x=>fd/x*CORR); }
+  } else if (m === "direct"){
+    r.velList = (s.velReadings||[]).filter(x=>x>=0);
+    r.velocity = mean(r.velList);
+  } else if (m === "counts" && cal.a != null){
+    const c = s.counts||[], tt = s.countTimes||[], v = [];
+    c.forEach((n,i) => { const sec = tt.length===1 ? tt[0] : tt[i];
+      if (sec > 0){ const rate = cal.unit==="min" ? n/(sec/60) : n/sec; v.push(cal.a*rate + (cal.b||0)); } });
+    r.velocity = mean(v); r.velN = v.length; r.velList = v;
+  }
+  r.method = m;
+  if (r.area != null && r.velocity != null) r.discharge = r.area*r.velocity;
+  r.gradient = num(s.gradient);
+  r.loadSize = mean(s.pebLen||[]);
+  r.gauge = mean(s.pebGauge||[]);
+  { const size = r.gauge ?? mean(s.pebLen||[]); if (size != null && r.hr) r.roughness = size/1000/r.hr; }
+  r.roundness = mean((s.pebRound||[]).filter(x=>x>=1&&x<=6));
+  r.nPeb = (s.pebLen||[]).length;
+  return r;
+}
+
+const VARS = [
+  {k:"discharge", label:"Discharge", unit:"m³/s", dp:3, exp:+1},
+  {k:"width", label:"Width", unit:"m", dp:2, exp:+1},
+  {k:"meanDepth", label:"Mean depth", unit:"m", dp:3, exp:+1},
+  {k:"area", label:"Cross-sectional area", unit:"m²", dp:3, exp:+1},
+  {k:"wp", label:"Wetted perimeter", unit:"m", dp:2, exp:+1},
+  {k:"hr", label:"Hydraulic radius", unit:"m", dp:3, exp:+1},
+  {k:"velocity", label:"Velocity", unit:"m/s", dp:3, exp:+1},
+  {k:"gradient", label:"Gradient", unit:"°", dp:1, exp:-1},
+  {k:"loadSize", label:"Load particle size (ruler)", unit:"mm", dp:1, exp:-1},
+  {k:"gauge", label:"Load particle size (gauge)", unit:"mm", dp:1, exp:-1},
+  {k:"roundness", label:"Load roundness", unit:"Powers 1–6", dp:2, exp:+1},
+  {k:"roughness", label:"Relative bed roughness", unit:"load size ÷ hydraulic radius", dp:3, exp:-1}
+];
+
+function ranks(a){
+  const idx = a.map((v,i)=>[v,i]).sort((x,y)=>x[0]-y[0]), r = new Array(a.length);
+  for (let i=0;i<idx.length;){
+    let j=i; while (j+1<idx.length && idx[j+1][0]===idx[i][0]) j++;
+    const avg = (i+j)/2 + 1; for (let k=i;k<=j;k++) r[idx[k][1]] = avg; i=j+1;
+  }
+  return r;
+}
+function pearson(x,y){
+  const mx=mean(x), my=mean(y); let sxy=0,sx=0,sy=0;
+  for (let i=0;i<x.length;i++){ const a=x[i]-mx,b=y[i]-my; sxy+=a*b; sx+=a*a; sy+=b*b; }
+  return sx&&sy ? sxy/Math.sqrt(sx*sy) : null;
+}
+function rankDesc(a){ const r = ranks(a.map(v => -v)); return r; }
+function spearman(x,y){
+  const n = x.length; if (n < 2) return null;
+  const rx = rankDesc(x), ry = rankDesc(y);
+  if (new Set(rx).size === 1 || new Set(ry).size === 1) return null;
+  const sd2 = rx.reduce((t,v,i) => t + (v-ry[i])**2, 0);
+  return 1 - 6*sd2/(n*(n*n-1));
+}
+const CRIT99 = {5:1.000,6:.943,7:.893,8:.833,9:.783,10:.745,11:.709,12:.678,13:.648,14:.626,15:.604,16:.582,17:.566,18:.550,19:.535,20:.520,21:.508,22:.496,23:.486,24:.476,25:.466,26:.457,27:.448,28:.440,29:.433,30:.425};
+const CRIT2T = {5:1.000,6:.886,7:.786,8:.738,9:.700,10:.648,11:.618,12:.587,13:.560,14:.538,15:.521,16:.503,17:.485,18:.472,19:.460,20:.447,21:.435,22:.425,23:.415,24:.406,25:.398,26:.390,27:.382,28:.375,29:.368,30:.362};
+const CRIT = {5:.900,6:.829,7:.714,8:.643,9:.600,10:.564,11:.536,12:.503,13:.484,14:.464,15:.446,16:.429,17:.414,18:.401,19:.391,20:.380,21:.370,22:.361,23:.353,24:.344,25:.337,26:.331,27:.324,28:.317,29:.312,30:.306};
+const crit = n => n<5 ? null : n>30 ? 1.645/Math.sqrt(n-1) : CRIT[n];
+
+function pairs(key){
+  return analysisSites().map(s => ({s, x:num(s.dist), y:compute(s)[key]})).filter(p => p.x!=null && p.y!=null && Number.isFinite(p.y));
+}
+function test(v){
+  const p = pairs(v.k), n = p.length, cv = crit(n);
+  if (n < 2) return {n, rs:null, cv, verdict:"na", text:"Not enough data"};
+  const rs = spearman(p.map(q=>q.x), p.map(q=>q.y));
+  if (rs == null) return {n, rs, cv, verdict:"na", text:"No variation"};
+  if (cv == null) return {n, rs, cv, verdict:"na", text:"Need 5+ sites"};
+  const sig = Math.abs(rs) >= cv, agrees = Math.sign(rs) === v.exp;
+  if (sig && agrees) return {n, rs, cv, sig, verdict:"yes", text:"Supports Bradshaw"};
+  if (sig && !agrees) return {n, rs, cv, sig, verdict:"no", text:"Contradicts Bradshaw"};
+  return {n, rs, cv, sig, verdict:"weak", text: agrees ? "Right direction, not significant" : "Not significant"};
+}
+
+// ---------- storage, offline queue and sync ----------
+const Q_KEY = "bradshaw-queue-v1", HAS_CLAUDE = !!(window.claude && window.claude.use);
+let queue = (() => { try { return JSON.parse(localStorage.getItem(Q_KEY)) || []; } catch(e){ return []; } })();
+let flushing = false, syncProblem = "", groupFilter = "", locked = false, isTeacher = !HAS_CLAUDE, readOnly = false;
+const MODS = {bridge:"Bridge nearby", weir:"Weir or dam", reinforced:"Reinforced banks", tributary:"Tributary joins upstream", rain:"Rain in last 48 h"};
+const isModified = s => (s.conditions||[]).some(c => c==="bridge"||c==="weir"||c==="reinforced");
+function sorted(all){ return [...sites].filter(s => all || !groupFilter || (s.group||"") === groupFilter).sort((a,b)=>(num(a.dist)??1e12)-(num(b.dist)??1e12)); }
+function loadLocal(){ try { const v = localStorage.getItem(LS_KEY); return v ? JSON.parse(v) : []; } catch(e){ return []; } }
+function saveLocal(){ try { localStorage.setItem(LS_KEY, JSON.stringify(sites)); } catch(e){ syncProblem = "This phone's storage is full. Upload or remove some photos."; } }
+function saveQueue(){ try { localStorage.setItem(Q_KEY, JSON.stringify(queue)); } catch(e){} }
+function upsertLocal(site){ const i = sites.findIndex(s=>s.id===site.id); if (i>=0) sites[i]=site; else sites.push(site); }
+function enqueue(op){ if (!HAS_CLAUDE) return; queue = queue.filter(q => q.id !== op.id); queue.push(op); saveQueue(); }
+function dataUrlToBlob(u){ const [h, b] = u.split(","), bin = atob(b), a = new Uint8Array(bin.length); for (let i=0;i<bin.length;i++) a[i]=bin.charCodeAt(i); return new Blob([a], {type: (h.match(/:(.*?);/)||[])[1] || "image/jpeg"}); }
+const withTimeout = (pr, ms) => Promise.race([pr, new Promise((_,rej)=>setTimeout(()=>rej({code:"timeout"}), ms))]);
+
+async function persist(site){
+  upsertLocal(site); saveLocal(); enqueue({op:"set", id:site.id, site}); renderAll(); flush();
+}
+async function remove(id){
+  sites = sites.filter(s=>s.id!==id); saveLocal(); enqueue({op:"del", id}); renderAll(); flush();
+}
+async function flush(){
+  if (!db || flushing || !queue.length || !navigator.onLine) { setStatus(); return; }
+  flushing = true; setStatus();
+  try {
+    while (queue.length){
+      const op = queue[0];
+      if (op.op === "set"){
+        let site = op.site;
+        if ((site.photos||[]).some(p=>p.data)){
+          if (assets){
+            const out = [];
+            for (const ph of site.photos){
+              if (ph.data){ const up = await withTimeout(assets.upload(dataUrlToBlob(ph.data), {type:"image/jpeg"}), 60000); out.push({id:up.id, caption:ph.caption}); }
+              else out.push(ph);
+            }
+            site = {...site, photos: out}; op.site = site; saveQueue(); upsertLocal(site); saveLocal();
+          } else site = {...site, photos: site.photos.filter(ph=>!ph.data)};
+        }
+        await withTimeout(db.collection("sites").doc(site.id).set(site), 20000);
+      } else {
+        await withTimeout(db.collection("sites").doc(op.id).delete(), 20000);
+      }
+      queue.shift(); saveQueue(); syncProblem = "";
+    }
+  } catch(err){
+    const c = err && err.code;
+    if (c === "invalid_argument" || c === "not_granted" || c === "permission_denied"){
+      queue.shift(); saveQueue(); readOnly = true; applyLock();
+      syncProblem = "You don't have permission to add to this survey, so a change couldn't be saved online. Ask your teacher for edit access.";
+    } else if (c && PH_ERR[c]) {
+      syncProblem = "A photo couldn't upload: " + PH_ERR[c];
+      if (c === "too_large" || c === "unsupported_type"){ const op = queue[0]; op.site = {...op.site, photos:(op.site.photos||[]).filter(p=>!p.data)}; saveQueue(); }
+    }
+  } finally { flushing = false; setStatus(); renderAll(); }
+}
+window.addEventListener("online", () => { setStatus(); flush(); });
+window.addEventListener("offline", setStatus);
+setInterval(flush, 15000);
+
+function mergeServer(docs){
+  const map = new Map(docs.map(d => [d.id, d]));
+  queue.forEach(op => { if (op.op === "set") map.set(op.id, op.site); else map.delete(op.id); });
+  sites = [...map.values()]; saveLocal();
+}
+function setStatus(){
+  const n = sites.length;
+  const where = shared ? "Saved online and shared with everyone who opens this page." : HAS_CLAUDE ? "Saved on this phone until a connection is available." : "Saved on this iPad. Works with no signal.";
+  $("status").innerHTML = `<b>${n} site${n===1?"":"s"}</b> recorded. ${where}`;
+  const el = $("sync"); let t = "", cls = "sync";
+  if (syncProblem) t = syncProblem;
+  else if (!HAS_CLAUDE) t = "";
+  else if (!navigator.onLine) t = queue.length ? `You're offline. ${queue.length} change${queue.length===1?" is":"s are"} saved on this phone and will upload when you have signal. Keep recording.` : "You're offline. Keep recording: everything is saved on this phone and will upload when you have signal.";
+  else if (queue.length) t = flushing ? `Uploading ${queue.length} change${queue.length===1?"":"s"}…` : `${queue.length} change${queue.length===1?" is":"s are"} waiting to upload. Trying again automatically.`;
+  el.hidden = !t; el.className = cls; el.textContent = t;
+}
+
+// ---------- hero strip ----------
+function renderStrip(){
+  const W=1000, x0=60, x1=940;
+  const list = sorted().filter(s=>num(s.dist)!=null);
+  const maxD = Math.max(1, ...list.map(s=>num(s.dist)));
+  // concave long profile
+  const prof = t => 30 + 95*(1 - Math.pow(1-t, 3));
+  let path = ""; for (let i=0;i<=60;i++){ const t=i/60; path += (i?"L":"M") + (x0+t*(x1-x0)).toFixed(1) + " " + prof(t).toFixed(1); }
+  let pins = "";
+  list.forEach((s,i) => {
+    const t = num(s.dist)/maxD, x = x0+t*(x1-x0), y = prof(t);
+    pins += `<g><line x1="${x}" y1="${y}" x2="${x}" y2="${y-18}" stroke="var(--ink)" stroke-width="1.5"/>
+      <circle cx="${x}" cy="${y}" r="6" fill="var(--flag)" stroke="var(--ink)" stroke-width="1.5"/>
+      <text x="${x}" y="${y-22}" text-anchor="middle" font-family="Barlow Condensed, sans-serif" font-size="15" font-weight="600" fill="var(--ink)">${esc(s.name||"Site")}</text>
+      <title>${esc(s.name)}: ${fmt(num(s.dist),0)} m from source</title></g>`;
+  });
+  const lbl = (x,y,t,a="start",c="var(--ink)") => `<text x="${x}" y="${y}" text-anchor="${a}" font-family="Atkinson Hyperlegible, sans-serif" font-size="14" fill="${c}">${t}</text>`;
+  $("strip").innerHTML = `
+    <path d="${path} L${x1} 135 L${x0} 135 Z" fill="var(--water-soft)"/>
+    <path d="${path}" fill="none" stroke="var(--water)" stroke-width="4" stroke-linecap="round"/>
+    ${lbl(x0,20,"Source","start","var(--muted)")}${lbl(x1,20,"Mouth","end","var(--muted)")}
+    <polygon points="${x0},170 ${x1},150 ${x1},190" fill="var(--water)" opacity=".85"/>
+    ${lbl(x0+8,166+0,"")}
+    <text x="${x1-12}" y="175" text-anchor="end" font-family="Atkinson Hyperlegible, sans-serif" font-size="14" font-weight="700" fill="var(--panel)">Increase downstream</text>
+    ${lbl(x0,212,"discharge · width · depth · cross-sectional area · hydraulic radius · velocity · load roundness","start","var(--muted)")}
+    <polygon points="${x0},222 ${x0},246 ${x1},234" fill="var(--silt)" opacity=".85" transform="translate(0,-2)"/>
+    <text x="${x0+12}" y="237" font-family="Atkinson Hyperlegible, sans-serif" font-size="14" font-weight="700" fill="var(--panel)">Decrease downstream</text>
+    <text x="${x0+190}" y="237" font-family="Atkinson Hyperlegible, sans-serif" font-size="14" fill="var(--ink)">gradient · load particle size · channel bed roughness</text>
+    ${pins}
+    ${list.length ? "" : lbl(W/2,95,"Your sites will appear on the river here","middle","var(--muted)")}`;
+}
+
+
+// ---------- bed load table ----------
+const GAUGE = [0.5,1,2,3,4,6,8,10,15,20,30,50,70,90,120,210];
+const RLAB = ["","1 Very angular","2 Angular","3 Sub-angular","4 Sub-rounded","5 Rounded","6 Well rounded"];
+const RCOL = ["","#B03A2E","#D2691E","#C9A227","#6FA35A","#2F8F83","#2E6DA4"];
+function pebRow(i, p={}){
+  const opts = RLAB.map((l,v)=> v ? `<option value="${v}"${+p.round===v?" selected":""}>${l}</option>` : `<option value="">Choose…</option>`).join("");
+  return `<tr><td>${i+1}</td>
+    <td><input class="pb-pos" type="number" inputmode="decimal" step="any" min="0" value="${p.pos??""}" aria-label="Piece ${i+1} distance from left bank"></td>
+    <td><input class="pb-len" type="number" inputmode="decimal" step="any" min="0" value="${p.len??""}" aria-label="Piece ${i+1} length in mm"></td>
+    <td><select class="pb-gauge" aria-label="Piece ${i+1} size gauge"><option value="">Choose…</option>${GAUGE.map(g=>`<option value="${g}"${+p.gauge===g?" selected":""}>${g} × ${g} mm</option>`).join("")}<option value="999"${+p.gauge===999?" selected":""}>Too big for 210 × 210</option></select></td>
+    <td><select class="pb-round" aria-label="Piece ${i+1} Powers roundness">${opts}</select></td></tr>`;
+}
+function setPebbles(list){
+  const n = Math.max(10, list.length);
+  $("pebBody").innerHTML = Array.from({length:n}, (_,i)=>pebRow(i, list[i])).join("");
+}
+function readPebbles(){
+  return [...$("pebBody").querySelectorAll("tr")].map(tr => ({
+    pos: num(tr.querySelector(".pb-pos").value), len: num(tr.querySelector(".pb-len").value), gauge: num(tr.querySelector(".pb-gauge").value), round: num(tr.querySelector(".pb-round").value)
+  })).filter(p => p.pos!=null || p.len!=null || p.gauge!=null || p.round!=null);
+}
+$("addPeb").onclick = () => { const cur = readPebbles(), rows = $("pebBody").rows.length; $("pebBody").insertAdjacentHTML("beforeend", pebRow(rows)); };
+
+// ---------- Powers scale reference ----------
+(function drawPowers(){
+  // shapes from angular (few vertices, jagged) to well rounded (circle)
+  const base = [[1,0],[.55,.9],[-.35,1],[-1,.25],[-.8,-.7],[.1,-1],[.75,-.65]];
+  const shape = (cx, cy, k) => {
+    if (k===6) return `<ellipse cx="${cx}" cy="${cy}" rx="30" ry="22" fill="${RCOL[6]}" opacity=".9"/>`;
+    const jitter = [1,.8,.6,.4,.2][k-1], t = [0,.07,.14,.22,.3][k-1];
+    let pts = base.map(([x,y],i) => { const r = 1 - jitter*0.3*((i*37)%5)/4; return [x*r, y*r]; });
+    for (let it=0; it<(k>1?3:0); it++){ // cut every corner by t: bigger t = more rounded
+      const out = []; pts.forEach((p,i) => { const q = pts[(i+1)%pts.length];
+        out.push([p[0]+t*(q[0]-p[0]), p[1]+t*(q[1]-p[1])], [q[0]-t*(q[0]-p[0]), q[1]-t*(q[1]-p[1])]); }); pts = out; }
+    const mx = Math.max(...pts.map(p=>Math.abs(p[0]))), my = Math.max(...pts.map(p=>Math.abs(p[1])));
+    return `<polygon points="${pts.map(([x,y])=>`${(cx+x/mx*30).toFixed(1)},${(cy+y/my*22).toFixed(1)}`).join(" ")}" fill="${RCOL[k]}" opacity=".9"/>`;
+  };
+  let g = "";
+  for (let k=1;k<=6;k++){
+    const cx = 50 + (k-1)*100;
+    g += shape(cx, 34, k) + `<text x="${cx}" y="76" text-anchor="middle" font-family="Barlow Condensed, sans-serif" font-weight="700" font-size="16" fill="var(--ink)">${k}</text>
+      <text x="${cx}" y="92" text-anchor="middle" font-family="Atkinson Hyperlegible, sans-serif" font-size="11.5" fill="var(--muted)">${RLAB[k].slice(2)}</text>`;
+  }
+  $("powersSvg").innerHTML = g;
+})();
+
+// ---------- cross-section diagram ----------
+function renderXsec(){
+  const svg = $("xsec"), w = num(F("width").value), d = nums(F("depths").value).filter(x=>x>=0);
+  const f = 'font-family="Atkinson Hyperlegible, sans-serif"';
+  if (!w || !d.length){
+    svg.innerHTML = `<text x="300" y="130" text-anchor="middle" font-size="15" fill="var(--muted)" ${f}>Enter the width and depth readings to draw the channel</text>`;
+    if ($("xsecSide")) $("xsecSide").innerHTML = `<text x="300" y="130" text-anchor="middle" font-size="22" fill="var(--muted)" ${f}>Channel appears here</text>`; return;
+  }
+  const X0=60, X1=540, SURF=70, BOT=200, maxD=Math.max(...d, 1);
+  const sp = w/(d.length+1), prof = [0, ...d, 0];
+  const X = m => X0 + m/w*(X1-X0), Y = cm => SURF + cm/maxD*(BOT-SURF);
+  const bed = prof.map((v,i)=>`${X(i*sp).toFixed(1)},${Y(v).toFixed(1)}`);
+  const depthAt = m => { const i = Math.min(prof.length-2, Math.max(0, Math.floor(m/sp))), t = (m - i*sp)/sp; return prof[i] + (prof[i+1]-prof[i])*Math.max(0,Math.min(1,t)); };
+  let g = "";
+  // banks
+  g += `<path d="M${X0-50},${SURF-30} L${X0},${SURF} L${bed.join(" L")} L${X1},${SURF} L${X1+50},${SURF-30} L${X1+50},${BOT+40} L${X0-50},${BOT+40} Z" fill="var(--silt-soft)" stroke="none"/>`;
+  // water
+  g += `<polygon points="${X0},${SURF} ${bed.join(" ")} ${X1},${SURF}" fill="var(--water-soft)"/>`;
+  g += `<line x1="${X0}" y1="${SURF}" x2="${X1}" y2="${SURF}" stroke="var(--water)" stroke-width="2.5"/>`;
+  g += `<polyline points="${X0-50},${SURF-30} ${X0},${SURF} ${bed.join(" ")} ${X1},${SURF} ${X1+50},${SURF-30}" fill="none" stroke="var(--silt)" stroke-width="3" stroke-linejoin="round"/>`;
+  // depth lines
+  d.forEach((v,i) => { const x = X((i+1)*sp);
+    g += `<line x1="${x}" y1="${SURF}" x2="${x}" y2="${Y(v)}" stroke="var(--ink)" stroke-dasharray="3 3" opacity=".55"/>
+      <text x="${x}" y="${Math.min(Y(v)+ (v/maxD>.8? -6 : 16), BOT+34)}" text-anchor="middle" font-size="12" fill="var(--ink)" ${f}>${+v.toFixed(1)}</text>`; });
+  // width arrow
+  g += `<line x1="${X0}" y1="${SURF-22}" x2="${X1}" y2="${SURF-22}" stroke="var(--ink)" stroke-width="1.3" marker-start="url(#ah)" marker-end="url(#ah)"/>
+    <rect x="${300-52}" y="${SURF-34}" width="104" height="22" rx="4" fill="var(--bg)"/>
+    <text x="300" y="${SURF-18}" text-anchor="middle" font-size="14" font-weight="700" fill="var(--ink)" ${f}>${+w.toFixed(2)} m wide</text>`;
+  g += `<text x="${X0-44}" y="${SURF-38}" font-size="12" fill="var(--muted)" ${f}>Left bank</text><text x="${X1+44}" y="${SURF-38}" text-anchor="end" font-size="12" fill="var(--muted)" ${f}>Right bank</text>`;
+  g += `<text x="${X0-44}" y="${BOT+32}" font-size="12" fill="var(--muted)" ${f}>Depths in cm</text>`;
+  // pebbles
+  const peb = readPebbles().filter(p => p.len!=null || p.gauge!=null || p.round!=null);
+  peb.forEach((p,i) => {
+    let m = p.pos; if (m==null || m<0 || m>w) m = (i+1)*w/(peb.length+1);
+    const x = X(m), y = Y(depthAt(m)) - 9, c = RCOL[p.round] || "var(--muted)";
+    g += `<g><circle cx="${x}" cy="${y}" r="8.5" fill="${c}" stroke="var(--ink)" stroke-width="1"/><text x="${x}" y="${y+4}" text-anchor="middle" font-size="10.5" font-weight="700" fill="#fff" ${f}>${i+1}</text>
+      <title>Piece ${i+1}: ${p.len!=null?p.len+" mm":"no length"}${p.gauge!=null?`, gauge ${p.gauge===999?">210":p.gauge} mm`:""}, ${p.round?RLAB[p.round]:"no roundness"}</title></g>`;
+  });
+  const side = $("xsecSide"); if (side) side.innerHTML = `<defs><marker id="ah2" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--ink)"/></marker></defs>` + g.replace(/url\(#ah\)/g,"url(#ah2)");
+  svg.innerHTML = `<defs><marker id="ah" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--ink)"/></marker></defs>` + g;
+}
+
+
+// ---------- divided bar graph ----------
+let divShowPct = true;
+function roundCounts(list){ const c=[0,0,0,0,0,0,0]; list.forEach(v=>{ if (v>=1&&v<=6) c[Math.round(v)]++; }); return c; }
+function divBars(rows, {W=700, showPct=true, title=""}={}){
+  const f='font-family="Atkinson Hyperlegible, sans-serif"', LW=Math.min(170, Math.max(70, ...rows.map(r=>r.label.length*8+14)));
+  const X0=LW, X1=W-24, BH=30, GAP=12, T=title?34:10, legendY = T + rows.length*(BH+GAP) + 16;
+  const H = legendY + 64;
+  let g = title ? `<text x="0" y="20" font-size="15" font-weight="700" fill="var(--ink)" ${f}>${esc(title)}</text>` : "";
+  rows.forEach((r,i) => {
+    const y = T + i*(BH+GAP), tot = r.counts.slice(1).reduce((a,b)=>a+b,0);
+    g += `<text x="${X0-10}" y="${y+BH/2+5}" text-anchor="end" font-size="13" fill="var(--ink)" ${f}>${esc(r.label)}</text>`;
+    if (!tot){ g += `<rect x="${X0}" y="${y}" width="${X1-X0}" height="${BH}" fill="none" stroke="var(--line)" stroke-dasharray="4 4"/><text x="${(X0+X1)/2}" y="${y+BH/2+5}" text-anchor="middle" font-size="12" fill="var(--muted)" ${f}>No roundness recorded</text>`; return; }
+    let x = X0;
+    for (let k=1;k<=6;k++){ const n=r.counts[k]; if (!n) continue;
+      const w = n/tot*(X1-X0);
+      g += `<rect x="${x}" y="${y}" width="${w}" height="${BH}" fill="${RCOL[k]}" stroke="var(--panel)" stroke-width="1.5"><title>${RLAB[k]}: ${n} of ${tot} (${Math.round(n/tot*100)}%)</title></rect>`;
+      const lab = showPct ? Math.round(n/tot*100)+"%" : String(n);
+      if (w > lab.length*8+6) g += `<text x="${x+w/2}" y="${y+BH/2+5}" text-anchor="middle" font-size="12.5" font-weight="700" fill="#fff" ${f}>${lab}</text>`;
+      x += w; }
+  });
+  // axis
+  const axY = T + rows.length*(BH+GAP) - GAP + 4;
+  [0,25,50,75,100].forEach(p => { const x = X0 + p/100*(X1-X0);
+    g += `<line x1="${x}" x2="${x}" y1="${axY}" y2="${axY+5}" stroke="var(--muted)"/><text x="${x}" y="${axY+17}" text-anchor="middle" font-size="11" fill="var(--muted)" ${f}>${p}%</text>`; });
+  // legend
+  const lw = (X1-X0+LW-10)/3;
+  for (let k=1;k<=6;k++){ const col=(k-1)%3, row=Math.floor((k-1)/3), lx = 10 + col*lw, ly = legendY + 12 + row*22;
+    g += `<rect x="${lx}" y="${ly}" width="14" height="14" rx="3" fill="${RCOL[k]}"/><text x="${lx+20}" y="${ly+12}" font-size="12.5" fill="var(--ink)" ${f}>${RLAB[k]}</text>`; }
+  return {svg:g, H: legendY + 64};
+}
+function renderPebBar(){
+  const r = roundCounts(readPebbles().map(p=>p.round)), name = F("name").value.trim() || "This site";
+  const out = divBars([{label:name, counts:r}], {W:600, title:"Roundness of the bed load at this site"});
+  $("pebBar").setAttribute("viewBox", `0 0 600 ${out.H}`); $("pebBar").innerHTML = out.svg;
+}
+function renderDivBar(){
+  const list = analysisSites().filter(s => (s.pebRound||[]).length);
+  const svg = $("divBar");
+  if (!list.length){ svg.setAttribute("viewBox","0 0 700 80"); svg.innerHTML = `<text x="350" y="45" text-anchor="middle" font-size="15" fill="var(--muted)" font-family="Atkinson Hyperlegible, sans-serif">Record roundness at a site to see the graph</text>`; return; }
+  const rows = list.map(s => ({label: `${s.name}${num(s.dist)!=null?` (${fmt(num(s.dist),0)} m)`:""}`, counts: roundCounts(s.pebRound)}));
+  const out = divBars(rows, {W:700, showPct:divShowPct});
+  svg.setAttribute("viewBox", `0 0 700 ${out.H}`); svg.innerHTML = out.svg;
+  $("divPct").textContent = divShowPct ? "Show counts" : "Show percentages";
+}
+$("divPct").onclick = () => { divShowPct = !divShowPct; renderDivBar(); };
+
+
+// ---------- saving files (claude downloads, iPad share sheet, or plain download) ----------
+async function saveFile(filename, data, type){
+  const blob = data instanceof Blob ? data : new Blob([data], {type: type || "text/plain"});
+  if (HAS_CLAUDE){ const dl = await window.claude.use("downloads"); if (!dl) throw {code:"none"}; await dl.save({filename, data: blob}); return; }
+  try {
+    const file = new File([blob], filename, {type: blob.type || type || "application/octet-stream"});
+    if (navigator.canShare && navigator.canShare({files:[file]})){ await navigator.share({files:[file], title: filename}); return; }
+  } catch(err){ if (err && err.name === "AbortError") throw {code:"declined"}; }
+  const url = URL.createObjectURL(blob), a = document.createElement("a");
+  a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 30000);
+}
+
+// ---------- on-device photo store (offline app) ----------
+const LOCAL_PHOTOS = !HAS_CLAUDE && !!window.indexedDB;
+let idbP = null;
+function idb(){ if (!idbP) idbP = new Promise((res, rej) => { const r = indexedDB.open("bradshaw-photos", 1); r.onupgradeneeded = () => r.result.createObjectStore("p"); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); return idbP; }
+async function idbPut(key, blob){ const d = await idb(); return new Promise((res, rej) => { const t = d.transaction("p","readwrite"); t.objectStore("p").put(blob, key); t.oncomplete = () => res(); t.onerror = () => rej(t.error); }); }
+async function idbGet(key){ const d = await idb(); return new Promise((res, rej) => { const q = d.transaction("p").objectStore("p").get(key); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); }); }
+const urlCache = {}, urlLoading = {};
+function localPhotoURL(key){
+  if (urlCache[key]) return urlCache[key];
+  if (!urlLoading[key]){ urlLoading[key] = true;
+    idbGet(key).then(b => { if (b){ urlCache[key] = URL.createObjectURL(b); renderThumbs(); renderGallery(); } }).catch(()=>{}); }
+  return "";
+}
+const blobToDataUrl = b => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(r.error); r.readAsDataURL(b); });
+
+// ---------- photos ----------
+let assets = null, formPhotos = [];
+const phSrc = p => p.id ? "/_blob/" + p.id : p.local ? localPhotoURL(p.local) : (p.data || "");
+function resizeImage(file, maxSide, quality){
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file), img = new Image();
+    img.onload = () => {
+      const k = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
+      const c = document.createElement("canvas"); c.width = Math.round(img.naturalWidth*k); c.height = Math.round(img.naturalHeight*k);
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url);
+      c.toBlob(b => b ? resolve({blob:b, dataUrl: () => c.toDataURL("image/jpeg", quality)}) : reject(new Error("encode")), "image/jpeg", quality);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("decode")); };
+    img.src = url;
+  });
+}
+const PH_ERR = {too_large:"That photo is too big, even after resizing.", unsupported_type:"That file type can't be uploaded. Try a JPEG or PNG.", quota_or_state:"Photo storage for this survey is full.", rate_limited:"Too many uploads at once. Wait a moment and try again.", upstream_auth:"Please reload the page or sign in again.", not_granted:"You can view photos but not add them."};
+$("ph-file").addEventListener("change", async e => {
+  const files = [...e.target.files]; e.target.value = "";
+  const msg = $("phMsg"), cap = $("ph-cap").value; if (!files.length) return;
+  msg.className = "msg"; let ok = 0, fail = "";
+  for (let i=0;i<files.length;i++){
+    msg.textContent = `Uploading photo ${i+1} of ${files.length}…`;
+    try {
+      if (assets && navigator.onLine){
+        let r; try { r = await resizeImage(files[i], 1600, 0.82); } catch(_){ r = null; }
+        const blob = r ? r.blob : files[i];
+        let up;
+        try { up = await assets.upload(blob, r ? {type:"image/jpeg"} : undefined); }
+        catch(err){ if (err && err.code==="store_unavailable"){ await new Promise(t=>setTimeout(t,1500)); up = await assets.upload(blob, r ? {type:"image/jpeg"} : undefined); } else throw err; }
+        formPhotos.push({id: up.id, caption: cap});
+      } else if (LOCAL_PHOTOS){
+        const r = await resizeImage(files[i], 1600, 0.8), key = uid();
+        await idbPut(key, r.blob); urlCache[key] = URL.createObjectURL(r.blob);
+        formPhotos.push({local: key, caption: cap});
+      } else {
+        const r = await resizeImage(files[i], 1200, 0.72);
+        formPhotos.push({data: r.dataUrl(), caption: cap});
+      }
+      ok++;
+    } catch(err){
+      if (err && (err.code === "upstream_error" || err.code === "store_unavailable" || err.code === "timeout")){
+        try { const r = await resizeImage(files[i], 1200, 0.72); formPhotos.push({data: r.dataUrl(), caption: cap}); ok++; continue; } catch(_){}
+      } fail = (err && PH_ERR[err.code]) || (err && err.message==="decode" ? "That photo couldn't be read. Try a JPEG or PNG." : "A photo couldn't be uploaded. Check your connection and try again."); }
+  }
+  renderThumbs();
+  msg.className = fail ? "msg err" : "msg ok";
+  msg.textContent = fail ? `${ok} added. ${fail}` : `${ok} photo${ok===1?"":"s"} added. Save the site to keep ${ok===1?"it":"them"}.`;
+  if (LOCAL_PHOTOS && navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(()=>{});
+});
+function renderThumbs(){
+  if (typeof saveDraft === "function") saveDraft();
+  $("thumbs").innerHTML = formPhotos.map((p,i) => `<figure class="thumb"><img src="${esc(phSrc(p))}" alt="${esc(p.caption)}" loading="lazy">
+    <figcaption>${esc(p.caption)}</figcaption><button type="button" data-rmph="${i}" aria-label="Remove photo">×</button></figure>`).join("");
+}
+$("thumbs").addEventListener("click", e => { const b = e.target.closest("[data-rmph]"); if (!b) return; formPhotos.splice(+b.dataset.rmph, 1); renderThumbs(); });
+function renderGallery(){
+  const list = sorted().filter(s => (s.photos||[]).length);
+  $("gallery").innerHTML = list.length ? list.map(s => `<div class="gsite"><h3>${esc(s.name)}${num(s.dist)!=null?` · ${fmt(num(s.dist),0)} m from source`:""}</h3>
+    <div class="thumbs">${s.photos.map(p => `<figure class="thumb"><a href="${esc(phSrc(p))}" target="_blank" rel="noopener"><img src="${esc(phSrc(p))}" alt="${esc(p.caption)}" loading="lazy"></a><figcaption>${esc(p.caption)}</figcaption></figure>`).join("")}</div></div>`).join("")
+    : `<div class="empty">No photos yet. Add them when recording a site.</div>`;
+}
+
+// ---------- form ----------
+const F = k => $("f-"+k);
+function readForm(){
+  return withPeb({
+    name: F("name").value.trim(), dist: num(F("dist").value), group: groupValue(),
+    siteKey: (setup.sites.some(t => t.key === $("f-pick").value) ? $("f-pick").value : null),
+    weather: F("weather").value.trim(), lat: num(F("lat").value), lon: num(F("lon").value), landUse: F("land").value,
+    conditions: [...$("conds").querySelectorAll("input:checked")].map(x=>x.value),
+    width: num(F("width").value), gradient: num(F("grad").value), depths: nums(F("depths").value),
+    velMethod: F("method").value, clock: F("clock").value,
+    counts: nums(F("counts").value), countTimes: nums(F("ctimes").value), velReadings: nums(F("vel").value),
+    floatDist: num(F("fdist").value), times: nums(F("times").value),
+    pebbles: readPebbles(), photos: formPhotos.slice(), notes: F("notes").value.trim()
+  });
+}
+function withPeb(s){ s.pebLen = s.pebbles.map(p=>p.len).filter(x=>x!=null); s.pebRound = s.pebbles.map(p=>p.round).filter(x=>x!=null); s.pebGauge = s.pebbles.map(p=>p.gauge).filter(x=>x!=null && x<999); return s; }
+function showMethod(){
+  const m = F("method").value;
+  document.querySelectorAll(".vm").forEach(el => el.hidden = el.dataset.m !== m);
+  $("calBox").hidden = m !== "counts";
+  $("calNote").innerHTML = cal.a == null
+    ? `<b style="color:var(--bad)">Set the flow meter calibration below before velocity can be calculated.</b>`
+    : `Using velocity = ${cal.a} × revolutions per ${cal.unit==="min"?"minute":"second"}${cal.b?` + ${cal.b}`:""} m/s.`;
+}
+function fillCal(){ $("c-a").value = cal.a ?? ""; $("c-b").value = cal.b ?? ""; $("c-unit").value = cal.unit || "s"; showMethod(); }
+$("calSave").onclick = async () => {
+  const a = num($("c-a").value), m = $("calMsg");
+  if (db && !isTeacher){ m.className="msg err"; m.textContent="Only your teacher can change the calibration."; return; }
+  if (a == null){ m.className="msg err"; m.textContent="Enter a value for a."; return; }
+  cal = {a, b: num($("c-b").value) || 0, unit: $("c-unit").value};
+  try { localStorage.setItem(CAL_KEY, JSON.stringify(cal)); } catch(e){}
+  try { if (db) await db.doc("config/meter").set(cal); m.className="msg ok"; m.textContent="Calibration saved for all sites."; }
+  catch(err){ m.className="msg err"; m.textContent="Saved on this device, but couldn't share it online."; }
+  showMethod(); renderLive(); renderAll();
+};
+F("method").addEventListener("change", showMethod);
+function fillForm(s){
+  F("name").value=s.name||""; F("dist").value=s.dist??""; F("group").value=s.group||"";
+  { const gs = $("f-group-sel"); if (s.group && ![...gs.options].some(o=>o.value===s.group)) gs.insertAdjacentHTML("beforeend", `<option>${esc(s.group)}</option>`); gs.value = s.group || myGroup; }
+  $("f-pick").value = s.siteKey && setup.sites.some(t=>t.key===s.siteKey) ? s.siteKey : (setup.sites.length && s.name ? "other" : ""); syncPick();
+  F("weather").value=s.weather||""; F("lat").value=s.lat??""; F("lon").value=s.lon??""; F("land").value=s.landUse||"";
+  $("conds").querySelectorAll("input").forEach(x => x.checked = (s.conditions||[]).includes(x.value));
+  F("width").value=s.width??""; F("grad").value=s.gradient??""; F("depths").value=(s.depths||[]).join(" ");
+  F("method").value=methodOf(s); F("clock").value=s.clock||"";
+  F("counts").value=(s.counts||[]).join(" "); F("ctimes").value=(s.countTimes||[]).join(" "); F("vel").value=(s.velReadings||[]).join(" ");
+  F("fdist").value=s.floatDist??""; F("times").value=(s.times||[]).join(" "); showMethod();
+  setPebbles(s.pebbles || (s.pebLen||[]).map((len,i)=>({pos:null,len,round:(s.pebRound||[])[i]??null}))); F("notes").value=s.notes||""; formPhotos = (s.photos||[]).slice(); renderThumbs();
+  renderLive();
+}
+function clearForm(){ $("form").reset(); $("f-group-sel").value = myGroup; syncPick(); setPebbles([]); formPhotos = []; renderThumbs(); $("phMsg").textContent=""; editingId=null; showMethod(); $("saveBtn").textContent="Save site"; $("cancelBtn").hidden=true; renderLive(); }
+function renderLive(){
+  renderXsec(); renderPebBar();
+  const s = readForm(), r = compute(s);
+  const rows = [
+    ["Mean depth", r.meanDepth!=null ? fmt(r.meanDepth*100,1)+" cm" : "–"],
+    ["Cross-sectional area", r.area!=null ? fmt(r.area,3)+" m²" : "–"],
+    ["Wetted perimeter", r.wp!=null ? fmt(r.wp,2)+" m" : "–"],
+    ["Hydraulic radius", r.hr!=null ? fmt(r.hr,3)+" m" : "–"],
+    ["Velocity", r.velocity!=null ? fmt(r.velocity,3)+" m/s" : (r.method==="counts" && cal.a==null ? "needs calibration" : "–")],
+    ["Discharge", r.discharge!=null ? fmt(r.discharge,3)+" m³/s" : "–"],
+    ["Mean pebble length", r.loadSize!=null ? fmt(r.loadSize,1)+" mm" : "–"],
+    ["Mean gauge size", r.gauge!=null ? fmt(r.gauge,1)+" mm" : "–"],
+    ["Mean roundness", r.roundness!=null ? fmt(r.roundness,2) : "–"],
+    ["Bed load pieces measured", s.pebLen.length || "–"]
+  ];
+  $("live").innerHTML = rows.map(([a,b])=>`<dt>${a}</dt><dd>${b}</dd>`).join("");
+}
+$("form").addEventListener("input", renderLive);
+$("form").addEventListener("submit", async e => {
+  e.preventDefault();
+  const s = readForm(), msg = $("formMsg");
+  msg.className = "msg";
+  if (!s.name){ msg.className="msg err"; msg.textContent="Give the site a name or number."; F("name").focus(); return; }
+  if (s.dist==null){ msg.className="msg err"; msg.textContent="Add the distance from the source. It's needed to test the model."; F("dist").focus(); return; }
+  if (locked && !isTeacher){ msg.className="msg err"; msg.textContent="The survey is locked, so changes can't be saved."; return; }
+  if (!s.group){ msg.className="msg err"; msg.textContent="Choose your group first."; $("f-group-sel").focus(); return; }
+  if (!editingId){
+    const dup = sites.find(x => siteKeyOf(x) === siteKeyOf(s) && (x.group||"") === (s.group||""));
+    if (dup){
+      if (!confirm(`${s.group || "Your group"} has already saved ${dup.name}. Replace that record with this one? Photos from both will be kept.`)){ msg.className="msg"; msg.textContent="Not saved. To change the earlier record, use Edit in the All sites tab."; return; }
+      editingId = dup.id; s.photos = [...(dup.photos||[]), ...(s.photos||[])];
+    }
+  }
+  const pr = s.pebRound.filter(x=>x<1||x>6);
+  if (pr.length){ msg.className="msg err"; msg.textContent="Roundness values must be between 1 and 6."; F("pround").focus(); return; }
+  s.id = editingId || uid(); s.updated = new Date().toISOString();
+  const wasEdit = !!editingId;
+  try {
+    await persist(s);
+    clearDraft();
+    msg.className="msg ok"; msg.textContent = `${wasEdit?"Updated":"Saved"} ${s.name}.` + (HAS_CLAUDE && (!navigator.onLine || !db) ? " It's stored on this phone and will upload when you have signal." : "");
+    clearForm();
+  } catch(err){
+    msg.className="msg err";
+    msg.textContent = err && err.code==="not_granted" ? "You can view this survey but not add to it. Ask the page owner for edit access." : "Couldn't save the site. Check your connection and try again.";
+  }
+});
+$("cancelBtn").onclick = () => { clearDraft(); clearForm(); $("formMsg").textContent=""; };
+$("clearBtn").onclick = () => { if (editingId) clearForm(); else { $("form").reset(); setPebbles([]); formPhotos = []; renderThumbs(); showMethod(); renderLive(); } };
+
+// ---------- table ----------
+function renderTable(){
+  const list = sorted();
+  if (!list.length){ $("tableWrap").innerHTML = `<div class="empty">No sites yet. Record your first site to start building the dataset.</div>`; return; }
+  const head = ["Site","Group","Time","Distance (m)","Width (m)","Mean depth (cm)","Area (m²)","Wetted perim. (m)","Hydraulic radius (m)","Velocity (m/s)","Discharge (m³/s)","Gradient (°)","Pebble length (mm)","Gauge size (mm)","Roundness","Rel. roughness","Conditions","Photos",""];
+  const rows = list.map(s => { const r = compute(s); return `<tr>
+    <td><b>${esc(s.name)}</b></td><td>${esc(s.group||"")}</td><td>${esc(s.clock||"")}</td><td>${fmt(num(s.dist),0)}</td><td>${fmt(r.width,2)}</td>
+    <td>${r.meanDepth!=null?fmt(r.meanDepth*100,1):"–"}</td><td>${fmt(r.area,3)}</td><td>${fmt(r.wp,2)}</td><td>${fmt(r.hr,3)}</td>
+    <td>${fmt(r.velocity,3)}</td><td>${fmt(r.discharge,3)}</td><td>${fmt(r.gradient,1)}</td><td>${fmt(r.loadSize,1)}</td><td>${fmt(r.gauge,1)}</td><td>${fmt(r.roundness,2)}</td><td>${fmt(r.roughness,3)}</td>
+    <td style="text-align:left">${esc([...(s.conditions||[]).map(c=>MODS[c]||c), s.landUse].filter(Boolean).join(", ")) || "–"}</td><td>${(s.photos||[]).length||"–"}</td>
+    <td class="act">${canChange() ? `<button class="btn ghost small" data-edit="${esc(s.id)}">Edit</button><button class="btn danger small" data-del="${esc(s.id)}">Delete</button>` : ""}</td></tr>`; }).join("");
+  $("tableWrap").innerHTML = `<table><thead><tr>${head.map(h=>`<th>${h}</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table>`;
+}
+$("tableWrap").addEventListener("click", async e => {
+  const ed = e.target.closest("[data-edit]"), del = e.target.closest("[data-del]");
+  if (ed){ const s = sites.find(x=>x.id===ed.dataset.edit); if (!s) return;
+    editingId = s.id; fillForm(s); $("saveBtn").textContent="Update site"; $("cancelBtn").hidden=false; showTab("record"); F("name").focus(); }
+  if (del){ const s = sites.find(x=>x.id===del.dataset.del); if (!s) return;
+    if (confirm(`Delete ${s.name}? This can't be undone.`)) { try { await remove(s.id); } catch(err){ alert("Couldn't delete the site."); } } }
+});
+
+// ---------- CSV ----------
+function csv(){
+  const cols = ["Site","Group","Weather","Latitude","Longitude","Site conditions","Land use","Relative bed roughness","Distance from source (m)","Width (m)","Depth readings (cm)","Mean depth (m)","Cross-sectional area (m2)","Wetted perimeter (m)","Hydraulic radius (m)","Time of measurement","Velocity method","Revolutions","Time recorded (s)","Direct velocity readings (m/s)","Float distance (m)","Float times (s)","Velocity (m/s)","Discharge (m3/s)","Gradient (deg)","Bed load positions from left bank (m)","Pebble lengths (mm)","Mean pebble length (mm)","Gauge sizes (mm)","Mean gauge size (mm)","Roundness values","Mean roundness","Notes"];
+  const q = v => { const t = v==null ? "" : String(v); return /[",\n]/.test(t) ? `"${t.replace(/"/g,'""')}"` : t; };
+  const r4 = v => v==null||!Number.isFinite(v) ? "" : +v.toFixed(4);
+  const lines = sorted().map(s => { const r = compute(s); return [s.name,s.group,s.weather,s.lat,s.lon,(s.conditions||[]).map(c=>MODS[c]||c).join("; "),s.landUse,r4(r.roughness),s.dist,s.width,(s.depths||[]).join(" "),r4(r.meanDepth),r4(r.area),r4(r.wp),r4(r.hr),s.clock,methodOf(s),(s.counts||[]).join(" "),(s.countTimes||[]).join(" "),(s.velReadings||[]).join(" "),s.floatDist,(s.times||[]).join(" "),r4(r.velocity),r4(r.discharge),s.gradient,(s.pebbles||[]).map(p=>p.pos??"").join(" "),(s.pebLen||[]).join(" "),r4(r.loadSize),(s.pebbles||[]).map(p=>p.gauge==null?"":p.gauge===999?">210":p.gauge).join(" "),r4(r.gauge),(s.pebRound||[]).join(" "),r4(r.roundness),s.notes].map(q).join(","); });
+  return [cols.map(q).join(","), ...lines].join("\n");
+}
+$("csvBtn").onclick = async () => {
+  const m = $("csvMsg"); m.className="msg"; m.textContent="";
+  try { await saveFile("river-survey-bradshaw.csv", csv(), "text/csv"); m.className="msg ok"; m.textContent="CSV saved."; }
+  catch(err){ if (err && err.code==="declined") return; showCsv(); m.textContent="Couldn't download, so the CSV is shown below to copy."; }
+};
+function showCsv(){ const t=$("csvOut"); t.value=csv(); t.style.display="block"; t.focus(); t.select(); }
+$("csvShowBtn").onclick = showCsv;
+
+// ---------- analysis ----------
+VARS.forEach(v => { const o=document.createElement("option"); o.value=v.k; o.textContent=`${v.label} (${v.unit})`; $("varSel").appendChild(o); });
+$("varSel").onchange = renderChart;
+
+function niceTicks(min,max,count=5){
+  if (min===max){ min-=1; max+=1; }
+  const span=max-min, step0=span/count, mag=Math.pow(10,Math.floor(Math.log10(step0))), f=step0/mag;
+  const step=(f<1.5?1:f<3?2:f<7?5:10)*mag, lo=Math.floor(min/step)*step, hi=Math.ceil(max/step)*step, t=[];
+  for (let v=lo; v<=hi+step/2; v+=step) t.push(+v.toFixed(10));
+  return t;
+}
+function renderChart(){
+  const v = VARS.find(x=>x.k===$("varSel").value), p = pairs(v.k), svg = $("chart");
+  const W=640,H=380,L=66,R=20,T=22,B=58;
+  if (p.length < 2){ svg.innerHTML = `<text x="${W/2}" y="${H/2}" text-anchor="middle" font-size="16" fill="var(--muted)" font-family="Atkinson Hyperlegible, sans-serif">Record at least 2 sites with this measurement to see a graph</text>`; renderStat(v); return; }
+  const xt = niceTicks(Math.min(0,...p.map(q=>q.x)), Math.max(...p.map(q=>q.x))), yt = niceTicks(Math.min(...p.map(q=>q.y)), Math.max(...p.map(q=>q.y)));
+  const X = x => L + (x-xt[0])/(xt[xt.length-1]-xt[0])*(W-L-R), Y = y => H-B - (y-yt[0])/(yt[yt.length-1]-yt[0])*(H-T-B);
+  const f = "font-family=\"Atkinson Hyperlegible, sans-serif\"";
+  let g = "";
+  yt.forEach(t => g += `<line x1="${L}" x2="${W-R}" y1="${Y(t)}" y2="${Y(t)}" stroke="var(--line)"/><text x="${L-8}" y="${Y(t)+4}" text-anchor="end" font-size="12" fill="var(--muted)" ${f}>${+t.toPrecision(4)}</text>`);
+  xt.forEach(t => g += `<text x="${X(t)}" y="${H-B+18}" text-anchor="middle" font-size="12" fill="var(--muted)" ${f}>${+t.toPrecision(4)}</text>`);
+  // least squares line
+  const mx=mean(p.map(q=>q.x)), my=mean(p.map(q=>q.y)); let sxy=0,sxx=0; p.forEach(q=>{sxy+=(q.x-mx)*(q.y-my); sxx+=(q.x-mx)**2;});
+  if (sxx){ const b=sxy/sxx, a=my-b*mx, xa=xt[0], xb=xt[xt.length-1];
+    const clampY = y => Math.max(yt[0], Math.min(yt[yt.length-1], y));
+    g += `<line x1="${X(xa)}" y1="${Y(clampY(a+b*xa))}" x2="${X(xb)}" y2="${Y(clampY(a+b*xb))}" stroke="var(--water)" stroke-width="2" stroke-dasharray="7 5"/>`; }
+  p.forEach(q => { const tt = `<title>${esc(q.s.name)}: ${fmt(q.y,v.dp)} ${esc(v.unit)} at ${fmt(q.x,0)} m${isModified(q.s)?" ("+esc((q.s.conditions||[]).map(c=>MODS[c]).filter(Boolean).join(", "))+")":""}</title>`;
+    g += isModified(q.s) ? `<rect x="${X(q.x)-7}" y="${Y(q.y)-7}" width="14" height="14" fill="var(--silt)" stroke="var(--ink)" stroke-width="1.5">${tt}</rect>`
+      : `<circle cx="${X(q.x)}" cy="${Y(q.y)}" r="7" fill="var(--flag)" stroke="var(--ink)" stroke-width="1.5">${tt}</circle>`; });
+  g += `<line x1="${L}" x2="${W-R}" y1="${H-B}" y2="${H-B}" stroke="var(--ink)" stroke-width="1.5"/><line x1="${L}" x2="${L}" y1="${T}" y2="${H-B}" stroke="var(--ink)" stroke-width="1.5"/>`;
+  g += `<text x="${(L+W-R)/2}" y="${H-12}" text-anchor="middle" font-size="14" fill="var(--ink)" ${f}>Distance from source (m)</text>`;
+  g += `<text transform="translate(16 ${(T+H-B)/2}) rotate(-90)" text-anchor="middle" font-size="14" fill="var(--ink)" ${f}>${esc(v.label)} (${esc(v.unit)})</text>`;
+  svg.innerHTML = g;
+  renderStat(v);
+}
+function renderStat(v){
+  const t = test(v);
+  $("statBox").innerHTML = `
+    <h3>${esc(v.label)}</h3>
+    <p>Bradshaw predicts this <b>${v.exp>0?"increases":"decreases"}</b> downstream.</p>
+    <div class="big">${t.rs==null?"–":t.rs.toFixed(3)}</div>
+    <p class="status">Spearman's r<sub>s</sub> from ${t.n} site${t.n===1?"":"s"}</p>
+    <p>Critical value (95%): <b>${t.cv==null?"needs 5+ sites":t.cv.toFixed(3)}</b></p>
+    <span class="verdict v-${t.verdict}">${t.text}</span>
+    <p class="status" style="margin-top:.9rem">${t.rs==null||t.cv==null?"":t.sig
+      ? `|r<sub>s</sub>| is at or above the critical value, so there is less than a 5% chance this relationship happened by chance.`
+      : `|r<sub>s</sub>| is below the critical value, so the relationship could be due to chance. More sites would give a stronger test.`}</p>`;
+}
+function renderSummary(){
+  const rows = VARS.map(v => { const t = test(v); return `<tr><td>${esc(v.label)}</td><td>${v.exp>0?"Increase":"Decrease"}</td><td>${t.n}</td><td>${t.rs==null?"–":t.rs.toFixed(3)}</td><td>${t.cv==null?"–":t.cv.toFixed(3)}</td><td><span class="verdict v-${t.verdict}">${t.text}</span></td></tr>`; }).join("");
+  $("summaryWrap").innerHTML = `<table><thead><tr><th>Variable</th><th>Bradshaw predicts</th><th>Sites (n)</th><th>r<sub>s</sub></th><th>Critical value</th><th>Result</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+
+// ---------- group filter ----------
+function renderGroupSel(){
+  const sel = $("grpSel"), groups = [...new Set(sites.map(s => s.group||"").filter(Boolean))].sort();
+  const cur = groupFilter;
+  sel.innerHTML = `<option value="">All groups</option>` + groups.map(g => `<option value="${esc(g)}"${g===cur?" selected":""}>${esc(g)}</option>`).join("");
+  if (cur && !groups.includes(cur)) { groupFilter = ""; }
+}
+$("grpSel").onchange = e => { groupFilter = e.target.value; renderAll(); };
+
+// ---------- GPS ----------
+$("gpsBtn").onclick = () => {
+  const m = $("gpsMsg"); m.className = "msg";
+  if (!navigator.geolocation){ m.className="msg err"; m.textContent="Location isn't available here. Type the coordinates from your phone's map app."; return; }
+  m.textContent = "Finding your location…";
+  navigator.geolocation.getCurrentPosition(pos => {
+    F("lat").value = pos.coords.latitude.toFixed(5); F("lon").value = pos.coords.longitude.toFixed(5);
+    m.className="msg ok"; m.textContent = `Location found, accurate to about ${Math.round(pos.coords.accuracy)} m.`;
+  }, () => { m.className="msg err"; m.textContent="Couldn't get your location here. Open your phone's map app, long-press where you're standing, and type the two numbers in."; },
+  {enableHighAccuracy:true, timeout:15000, maximumAge:60000});
+};
+
+// ---------- paper sheet ----------
+const SHEET_ID = "97ab4da60dead6bc6f148c734ea7686f";
+$("sheetBtn").onclick = async () => {
+  const m = $("sheetMsg"); m.className = "msg"; m.textContent = "";
+  try {
+    const res = await fetch(HAS_CLAUDE ? "/_blob/" + SHEET_ID : "river-survey-recording-sheet.pdf"); if (!res.ok) throw {code:"fetch"};
+    await saveFile("river-survey-recording-sheet.pdf", await res.blob(), "application/pdf");
+    m.className="msg ok"; m.textContent="Recording sheet saved. Print one per site.";
+  } catch(err){ if (err && err.code==="declined") return; m.className="msg err"; m.textContent = navigator.onLine ? "The recording sheet couldn't be downloaded here. Ask your teacher for a paper copy." : "You need a connection to download the sheet."; }
+};
+
+// ---------- box plots ----------
+function quant(sortedArr, p){ const pos = (sortedArr.length-1)*p, lo = Math.floor(pos), hi = Math.ceil(pos); return sortedArr[lo] + (sortedArr[hi]-sortedArr[lo])*(pos-lo); }
+function fiveNum(a){ const x = [...a].sort((m,n)=>m-n); return {min:x[0], q1:quant(x,.25), med:quant(x,.5), q3:quant(x,.75), max:x[x.length-1], mean:mean(x), n:x.length}; }
+$("boxSel").onchange = renderBox;
+function renderBox(){
+  const key = $("boxSel").value, unit = key==="round" ? "" : " mm", svg = $("boxPlot");
+  const get = s => key==="len" ? (s.pebLen||[]) : key==="gauge" ? (s.pebGauge||[]) : (s.pebRound||[]);
+  const list = analysisSites().map(s => ({s, v:get(s)})).filter(o => o.v.length >= 2);
+  const f = 'font-family="Atkinson Hyperlegible, sans-serif"';
+  if (!list.length){ svg.setAttribute("viewBox","0 0 700 80"); svg.innerHTML = `<text x="350" y="45" text-anchor="middle" font-size="15" fill="var(--muted)" ${f}>Record at least 2 pieces at a site to see its box plot</text>`; $("boxTable").innerHTML=""; return; }
+  const stats = list.map(o => ({s:o.s, ...fiveNum(o.v)}));
+  const lo = key==="round" ? 1 : Math.min(...stats.map(t=>t.min)), hi = key==="round" ? 6 : Math.max(...stats.map(t=>t.max));
+  const ticks = key==="round" ? [1,2,3,4,5,6] : niceTicks(Math.min(0,lo), hi);
+  const LW = Math.min(180, Math.max(80, ...stats.map(t => (t.s.name.length+8)*7.5))), X0 = LW, X1 = 680, RH = 40, T = 10;
+  const X = v => X0 + (v-ticks[0])/(ticks[ticks.length-1]-ticks[0])*(X1-X0);
+  let g = "";
+  ticks.forEach(t => g += `<line x1="${X(t)}" x2="${X(t)}" y1="${T}" y2="${T+stats.length*RH}" stroke="var(--line)"/>`);
+  stats.forEach((t,i) => {
+    const y = T + i*RH + RH/2, col = isModified(t.s) ? "var(--silt)" : "var(--water)";
+    g += `<text x="${X0-10}" y="${y+4}" text-anchor="end" font-size="13" fill="var(--ink)" ${f}>${esc(t.s.name)}${num(t.s.dist)!=null?` (${fmt(num(t.s.dist),0)} m)`:""}</text>
+      <line x1="${X(t.min)}" x2="${X(t.max)}" y1="${y}" y2="${y}" stroke="var(--ink)" stroke-width="1.5"/>
+      <line x1="${X(t.min)}" x2="${X(t.min)}" y1="${y-8}" y2="${y+8}" stroke="var(--ink)" stroke-width="1.5"/>
+      <line x1="${X(t.max)}" x2="${X(t.max)}" y1="${y-8}" y2="${y+8}" stroke="var(--ink)" stroke-width="1.5"/>
+      <rect x="${X(t.q1)}" y="${y-12}" width="${Math.max(2,X(t.q3)-X(t.q1))}" height="24" fill="${col}" fill-opacity=".3" stroke="${col}" stroke-width="2"/>
+      <line x1="${X(t.med)}" x2="${X(t.med)}" y1="${y-12}" y2="${y+12}" stroke="var(--ink)" stroke-width="3"/>
+      <circle cx="${X(t.mean)}" cy="${y}" r="4" fill="var(--flag)" stroke="var(--ink)"/>
+      <title>${esc(t.s.name)}: min ${fmt(t.min,1)}, Q1 ${fmt(t.q1,1)}, median ${fmt(t.med,1)}, Q3 ${fmt(t.q3,1)}, max ${fmt(t.max,1)}${unit}</title>`;
+  });
+  const axY = T + stats.length*RH + 4;
+  ticks.forEach(t => g += `<text x="${X(t)}" y="${axY+14}" text-anchor="middle" font-size="12" fill="var(--muted)" ${f}>${+t.toPrecision(4)}</text>`);
+  g += `<text x="${(X0+X1)/2}" y="${axY+36}" text-anchor="middle" font-size="13" fill="var(--ink)" ${f}>${esc($("boxSel").selectedOptions[0].textContent)}</text>`;
+  svg.setAttribute("viewBox", `0 0 700 ${axY+46}`); svg.innerHTML = g;
+  $("boxTable").innerHTML = `<table><thead><tr><th>Site</th><th>Pieces</th><th>Min</th><th>Lower quartile</th><th>Median</th><th>Upper quartile</th><th>Max</th><th>Interquartile range</th><th>Mean</th></tr></thead><tbody>${
+    stats.map(t => `<tr><td>${esc(t.s.name)}</td><td>${t.n}</td><td>${fmt(t.min,1)}</td><td>${fmt(t.q1,1)}</td><td>${fmt(t.med,1)}</td><td>${fmt(t.q3,1)}</td><td>${fmt(t.max,1)}</td><td><b>${fmt(t.q3-t.q1,1)}</b></td><td>${fmt(t.mean,1)}</td></tr>`).join("")}</tbody></table>`;
+}
+
+// ---------- check the data ----------
+function progressOf(s){
+  const r = compute(s), peb = (s.pebbles||[]);
+  const full = peb.filter(p => p.round!=null && (p.len!=null || p.gauge!=null)).length;
+  const c = {
+    location: num(s.dist)!=null,
+    gps: s.lat!=null && s.lon!=null,
+    xsec: r.width!=null && (s.depths||[]).length >= 3,
+    gradient: r.gradient!=null,
+    velocity: r.velocity!=null,
+    bedload: full,
+    photos: (s.photos||[]).length
+  };
+  c.complete = c.location && c.xsec && c.gradient && c.velocity && full >= 10;
+  return c;
+}
+const tick = ok => ok ? `<span class="ok-c">✓</span>` : `<span class="no-c">✗</span>`;
+function groupSummary(list){
+  const by = {}; list.forEach(s => { const g = s.group || "No group"; (by[g] = by[g] || []).push(s); });
+  return Object.keys(by).sort().map(g => { const n = by[g].length, done = by[g].filter(s=>progressOf(s).complete).length;
+    return `<div><strong>${esc(g)}</strong>${done} of ${n} site${n===1?"":"s"} complete</div>`; }).join("");
+}
+function progressTable(list){
+  if (!list.length) return `<div class="empty">No sites yet.</div>`;
+  return `<table><thead><tr><th>Site</th><th>Group</th><th>Distance</th><th>GPS</th><th>Cross-section</th><th>Gradient</th><th>Velocity</th><th>Bed load</th><th>Photos</th><th>Complete</th></tr></thead><tbody>${
+    list.map(s => { const c = progressOf(s); return `<tr><td>${esc(s.name)}</td><td>${esc(s.group||"–")}</td><td>${tick(c.location)}</td><td>${tick(c.gps)}</td><td>${tick(c.xsec)}</td><td>${tick(c.gradient)}</td><td>${tick(c.velocity)}</td>
+      <td><span class="${c.bedload>=10?"ok-c":c.bedload?"part-c":"no-c"}">${c.bedload}/10</span></td><td>${c.photos||"–"}</td><td>${c.complete?`<span class="verdict v-yes">Complete</span>`:`<span class="verdict v-weak">Not yet</span>`}</td></tr>`; }).join("")}</tbody></table>`;
+}
+function reliabilityFlags(){
+  const list = sorted(), flags = [];
+  list.forEach(s => {
+    const r = compute(s), name = `<b>${esc(s.name)}</b>${s.group?` (${esc(s.group)})`:""}`;
+    if (r.velList && r.velList.length >= 2){
+      const m = mean(r.velList), sd = Math.sqrt(mean(r.velList.map(v=>(v-m)**2)));
+      const cv = m ? sd/m*100 : 0;
+      if (cv > 20) flags.push(["warn", `${name}: the velocity readings vary by ${Math.round(cv)}% around the mean (range ${fmt(Math.min(...r.velList),2)}–${fmt(Math.max(...r.velList),2)} m/s). Debris, eddies or the meter's position may have affected them. More readings would help.`]);
+    } else if (r.velocity != null) flags.push(["info", `${name}: velocity is based on a single reading. Repeat readings let you judge how reliable it is.`]);
+    const nd = (s.depths||[]).length;
+    if (nd && nd < 5) flags.push(["warn", `${name}: only ${nd} depth readings. The cross-section and discharge will be rough estimates.`]);
+    const np = (s.pebbles||[]).filter(p=>p.len!=null||p.gauge!=null).length;
+    if (np && np < 10) flags.push(["warn", `${name}: only ${np} bed load pieces measured, fewer than the 10 planned.`]);
+    (s.pebbles||[]).forEach((p,i) => {
+      if (p.len!=null && p.gauge!=null && p.gauge!==999){
+        const gi = GAUGE.indexOf(p.gauge), prev = gi>0 ? GAUGE[gi-1] : 0;
+        if (prev >= p.len) flags.push(["err", `${name}, piece ${i+1}: the ruler says ${p.len} mm long, but it didn't fit through the ${prev} × ${prev} square. A piece can't be wider than it is long, so one of these readings is probably wrong.`]);
+      }
+    });
+    if (isModified(s)) flags.push(["info", `${name}: ${esc((s.conditions||[]).filter(c=>c!=="rain"&&c!=="tributary").map(c=>MODS[c].toLowerCase()).join(", "))}. Human changes to the channel here could explain results that don't fit Bradshaw.`]);
+    if ((s.conditions||[]).includes("tributary")) flags.push(["info", `${name}: a tributary joins upstream, which can cause a sudden jump in discharge.`]);
+  });
+  VARS.forEach(v => {
+    const p = pairs(v.k); if (p.length < 5) return;
+    const mx=mean(p.map(q=>q.x)), my=mean(p.map(q=>q.y)); let sxy=0,sxx=0; p.forEach(q=>{sxy+=(q.x-mx)*(q.y-my); sxx+=(q.x-mx)**2;}); if (!sxx) return;
+    const b=sxy/sxx, a=my-b*mx, res = p.map(q => q.y-(a+b*q.x)), sd = Math.sqrt(mean(res.map(e=>e*e)));
+    p.forEach((q,i) => { if (sd && Math.abs(res[i]) > 2*sd) flags.push(["warn", `<b>${esc(q.s.name)}</b>: ${esc(v.label.toLowerCase())} (${fmt(q.y,v.dp)} ${esc(v.unit)}) is well ${res[i]>0?"above":"below"} the trend of the other sites. Check the reading, or look for a local reason.`]); });
+  });
+  return flags;
+}
+function compareGroups(){
+  const list = sorted(true).filter(s => s.group), used = new Set(), clusters = [];
+  list.forEach(s => {
+    if (used.has(s.id)) return;
+    const c = list.filter(t => !used.has(t.id) && (siteKeyOf(t) === siteKeyOf(s) || (t.name||"").trim().toLowerCase() === (s.name||"").trim().toLowerCase() || (num(t.dist)!=null && num(s.dist)!=null && Math.abs(num(t.dist)-num(s.dist)) <= 10)));
+    if (new Set(c.map(t=>t.group)).size >= 2){ c.forEach(t=>used.add(t.id)); clusters.push(c); }
+  });
+  if (!clusters.length) return `<div class="empty">No site has been measured by more than one group yet.</div>`;
+  const keys = [["width","Width (m)",2],["meanDepth","Mean depth (m)",3],["velocity","Velocity (m/s)",3],["discharge","Discharge (m³/s)",3],["loadSize","Pebble length (mm)",1],["gauge","Gauge size (mm)",1],["roundness","Roundness",2]];
+  return clusters.map(c => {
+    const rs = c.map(s => compute(s));
+    const rows = keys.map(([k,l,dp]) => { const vals = rs.map(r=>r[k]).filter(v=>v!=null); let diff = "–", cls = "";
+      if (vals.length >= 2){ const m = mean(vals), d = m ? (Math.max(...vals)-Math.min(...vals))/m*100 : 0; diff = Math.round(d)+"%"; cls = d > 25 ? "no-c" : d > 10 ? "part-c" : "ok-c"; }
+      return `<tr><td>${l}</td>${rs.map(r=>`<td>${fmt(r[k],dp)}</td>`).join("")}<td class="${cls}">${diff}</td></tr>`; }).join("");
+    return `<h3 style="margin-top:1rem">${esc(c[0].name)}${num(c[0].dist)!=null?` · ${fmt(num(c[0].dist),0)} m`:""}</h3>
+      <div class="scroll"><table><thead><tr><th>Measurement</th>${c.map(s=>`<th>${esc(s.group)}</th>`).join("")}<th>Difference</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  }).join("") + `<p class="hint" style="margin-top:.5rem">Difference is the range between groups as a percentage of their mean. Green is under 10%, amber 10–25%, red over 25%.</p>`;
+}
+function renderCheck(){
+  const list = sorted();
+  $("groupProgress").innerHTML = `<div class="gp">${groupSummary(list)}</div>`;
+  $("progressWrap").innerHTML = progressTable(list);
+  const f = reliabilityFlags();
+  $("flags").innerHTML = f.length ? f.map(([k,t]) => `<div class="flag ${k==="info"?"info":k==="err"?"err":""}">${t}</div>`).join("") : `<div class="empty">Nothing to flag yet.</div>`;
+  $("compare").innerHTML = compareGroups();
+}
+
+// ---------- teacher & lock ----------
+const canChange = () => !readOnly && (!locked || isTeacher);
+function applyLock(){
+  applyXfer();
+  const ro = !canChange();
+  $("lockBanner").hidden = !(locked && !isTeacher);
+  $("form").querySelectorAll("fieldset").forEach(fs => fs.disabled = ro);
+  ["saveBtn","clearBtn","cancelBtn"].forEach(id => $(id).disabled = ro);
+  const calRO = !!db && !isTeacher;
+  ["c-a","c-b","c-unit","calSave"].forEach(id => $(id).disabled = calRO);
+  $("calIntro").textContent = calRO ? "Your teacher sets the flow meter calibration for everyone." : "Copy the formula from your flow meter's calibration sheet. This applies to every site, so set it once.";
+  $("tab-teacher").hidden = !(isTeacher && db);
+  $("lockText").textContent = locked ? "The survey is locked. Students can see the data but can't add, edit or delete sites. You can still make changes." : "The survey is open. Students can add, edit and delete sites.";
+  $("lockBtn").textContent = locked ? "Unlock the survey" : "Lock the survey";
+  if (locked && !isTeacher && editingId) clearForm();
+}
+$("lockBtn").onclick = async () => {
+  const m = $("lockMsg"); m.className = "msg";
+  try { await db.doc("config/lock").set({locked: !locked, changed: new Date().toISOString()}); m.className="msg ok"; m.textContent = !locked ? "Survey locked." : "Survey unlocked."; }
+  catch(err){ m.className="msg err"; m.textContent="Couldn't change the lock. Check your connection."; }
+};
+function renderTeacher(){
+  renderMatrix();
+  const all = sorted(true), by = {};
+  all.forEach(s => { const g = s.group || "No group"; (by[g] = by[g] || []).push(s); });
+  const groups = Object.keys(by).sort();
+  if (!groups.length){ $("teacherProgress").innerHTML = `<div class="empty">No sites recorded yet.</div>`; return; }
+  $("teacherProgress").innerHTML = groups.map(g => {
+    const list = by[g], todo = list.filter(s => !progressOf(s).complete);
+    const missing = todo.map(s => { const c = progressOf(s), m = [];
+      if (!c.location) m.push("distance"); if (!c.xsec) m.push("cross-section"); if (!c.gradient) m.push("gradient"); if (!c.velocity) m.push("velocity"); if (c.bedload < 10) m.push(`bed load (${c.bedload}/10)`);
+      return `<li>${esc(s.name)}: missing ${m.join(", ")}</li>`; }).join("");
+    return `<div class="flag ${todo.length?"":"info"}"><b>${esc(g)}</b>: ${list.length - todo.length} of ${list.length} site${list.length===1?"":"s"} complete${todo.length?`<ul style="margin:.4rem 0 0 1.1rem;padding:0">${missing}</ul>`:""}</div>`;
+  }).join("");
+}
+
+
+// ---------- draft autosave (iPad may reload the page when switching to the camera) ----------
+const DRAFT_KEY = "bradshaw-draft-v1";
+let draftTimer = null;
+function saveDraft(){
+  clearTimeout(draftTimer);
+  draftTimer = setTimeout(() => {
+    try {
+      const s = readForm();
+      const empty = !s.name && s.dist==null && s.width==null && !(s.depths||[]).length && !(s.pebbles||[]).length && !(s.photos||[]).length;
+      if (empty) localStorage.removeItem(DRAFT_KEY);
+      else localStorage.setItem(DRAFT_KEY, JSON.stringify({site:s, editingId, saved:Date.now()}));
+    } catch(e){}
+  }, 400);
+}
+function clearDraft(){ try { localStorage.removeItem(DRAFT_KEY); } catch(e){} $("draftBar").hidden = true; }
+function restoreDraft(){
+  try {
+    const d = JSON.parse(localStorage.getItem(DRAFT_KEY)); if (!d || !d.site) return;
+    editingId = d.editingId || null; fillForm(d.site);
+    if (editingId){ $("saveBtn").textContent="Update site"; $("cancelBtn").hidden=false; }
+    const mins = Math.round((Date.now()-d.saved)/60000);
+    $("draftText").textContent = `Unsaved work${d.site.name?` for ${d.site.name}`:""} from ${mins<1?"just now":mins===1?"a minute ago":mins<120?mins+" minutes ago":"earlier"} has been restored.`;
+    $("draftBar").hidden = false;
+  } catch(e){}
+}
+$("draftDiscard").onclick = () => { clearDraft(); clearForm(); };
+$("form").addEventListener("input", saveDraft);
+$("form").addEventListener("change", saveDraft);
+
+
+// ---------- trip setup: fixed groups and sites ----------
+const MYGROUP_KEY = "bradshaw-mygroup-v1";
+let setup = (() => { try { return JSON.parse(localStorage.getItem("bradshaw-setup-v1")) || {groups:[], sites:[]}; } catch(e){ return {groups:[], sites:[]}; } })();
+let myGroup = (() => { try { return localStorage.getItem(MYGROUP_KEY) || ""; } catch(e){ return ""; } })();
+const DEFAULT_GROUPS = ["Group 1","Group 2","Group 3","Group 4","Group 5"];
+const groupList = () => setup.groups.length ? setup.groups : DEFAULT_GROUPS;
+const siteKeyOf = s => s.siteKey || ("n:" + (s.name||"").trim().toLowerCase());
+function applySetup(){
+  try { localStorage.setItem("bradshaw-setup-v1", JSON.stringify(setup)); } catch(e){}
+  $("pickRow").hidden = false;
+  // group select
+  const gs = $("f-group-sel");
+  const keep = gs.value || myGroup;
+  gs.innerHTML = `<option value="">Choose your group…</option>` + groupList().map(g => `<option${g===keep?" selected":""}>${esc(g)}</option>`).join("");
+  gs.parentElement.hidden = false; $("groupFree").hidden = true;
+  // site select
+  const ps = $("f-pick"), cur = ps.value;
+  ps.innerHTML = `<option value="">Choose a site…</option>` + setup.sites.map(t => `<option value="${esc(t.key)}">${esc(t.name)}${t.dist!=null?` · ${t.dist} m from source`:""}</option>`).join("") + `<option value="other">Another site (type it in)</option>`;
+  ps.value = [...ps.options].some(o=>o.value===cur) ? cur : "";
+  ps.parentElement.hidden = !setup.sites.length;
+  syncPick();
+  renderSetupEditor();
+}
+function syncPick(){
+  const k = $("f-pick").value, t = setup.sites.find(x => x.key === k);
+  if (t){ F("name").value = t.name; if (t.dist != null) F("dist").value = t.dist; }
+  F("name").readOnly = !!t; F("dist").readOnly = !!t && t.dist != null;
+}
+$("f-pick").addEventListener("change", () => { if ($("f-pick").value === "other"){ F("name").value=""; F("dist").value=""; } syncPick(); renderLive(); saveDraft(); });
+$("f-group-sel").addEventListener("change", e => { myGroup = e.target.value; try { localStorage.setItem(MYGROUP_KEY, myGroup); } catch(_){} });
+const groupValue = () => $("f-group-sel").value;
+
+function renderSetupEditor(){
+  if (document.activeElement && $("p-teacher").contains(document.activeElement)) return;
+  const gl = setup.groups.length ? setup.groups : ["Group 1","Group 2","Group 3","Group 4","Group 5"];
+  $("setGroups").innerHTML = gl.map((g,i) => setGroupRow(i, g)).join(""); markGroupCount();
+  const rows = setup.sites.length ? setup.sites : [{key:"",name:"",dist:null}];
+  $("setSites").innerHTML = rows.map((t,i) => setSiteRow(i, t)).join("");
+}
+const setGroupRow = (i, g="") => `<tr><td>${i+1}</td><td><input class="sg-name" value="${esc(g)}" placeholder="Group ${i+1}" aria-label="Group ${i+1} name"></td>
+  <td><button class="btn danger small" type="button" data-rmgroup aria-label="Remove group ${i+1}">Remove</button></td></tr>`;
+$("addSetGroup").onclick = () => { const n = $("setGroups").rows.length; $("setGroups").insertAdjacentHTML("beforeend", setGroupRow(n, `Group ${n+1}`)); $("setGroups").rows[n].querySelector("input").focus(); markGroupCount(); };
+$("setGroups").addEventListener("click", e => { const b = e.target.closest("[data-rmgroup]"); if (b){ b.closest("tr").remove(); [...$("setGroups").rows].forEach((r,i)=>r.cells[0].textContent=i+1); markGroupCount(); } });
+function markGroupCount(){ const n = $("setGroups").rows.length; document.querySelectorAll("#grpCount button").forEach(b => b.setAttribute("aria-checked", +b.dataset.n === n ? "true" : "false")); }
+document.querySelectorAll("#grpCount button").forEach(b => b.onclick = () => {
+  const n = +b.dataset.n, names = [...$("setGroups").querySelectorAll(".sg-name")].map(x => x.value);
+  const out = Array.from({length:n}, (_,i) => names[i] && names[i].trim() ? names[i] : `Group ${i+1}`);
+  $("setGroups").innerHTML = out.map((g,i) => setGroupRow(i, g)).join(""); markGroupCount();
+});
+const setSiteRow = (i, t={}) => `<tr data-key="${esc(t.key||"")}"><td>${i+1}</td><td><input class="ss-name" value="${esc(t.name||"")}" placeholder="Site ${i+1}" aria-label="Site ${i+1} name"></td>
+  <td><input class="ss-dist" type="number" inputmode="decimal" step="any" min="0" value="${t.dist??""}" aria-label="Site ${i+1} distance"></td>
+  <td><button class="btn danger small" type="button" data-rmsite aria-label="Remove site ${i+1}">Remove</button></td></tr>`;
+$("addSetSite").onclick = () => { const n = $("setSites").rows.length; $("setSites").insertAdjacentHTML("beforeend", setSiteRow(n)); $("setSites").rows[n].querySelector("input").focus(); };
+$("setSites").addEventListener("click", e => { const b = e.target.closest("[data-rmsite]"); if (b){ b.closest("tr").remove(); [...$("setSites").rows].forEach((r,i)=>r.cells[0].textContent=i+1); } });
+$("saveSetup").onclick = async () => {
+  const m = $("setupMsg"); m.className = "msg";
+  const groups = [...$("setGroups").querySelectorAll(".sg-name")].map(x=>x.value.trim()).filter(Boolean);
+  if (!groups.length){ m.className="msg err"; m.textContent="Add at least one group."; return; }
+  const sitesDef = [...$("setSites").rows].map(r => ({key: r.dataset.key || uid(), name: r.querySelector(".ss-name").value.trim(), dist: num(r.querySelector(".ss-dist").value)})).filter(t => t.name);
+  if (new Set(groups.map(g=>g.toLowerCase())).size !== groups.length){ m.className="msg err"; m.textContent="Two groups have the same name."; return; }
+  const next = {groups, sites: sitesDef.sort((a,b)=>(a.dist??1e12)-(b.dist??1e12))};
+  try { await db.doc("config/setup").set(next); setup = next; applySetup(); m.className="msg ok"; m.textContent=`Saved ${groups.length} group${groups.length===1?"":"s"} and ${next.sites.length} site${next.sites.length===1?"":"s"}. Students will see them next time they open the page.`; }
+  catch(err){ m.className="msg err"; m.textContent="Couldn't save. Check your connection."; }
+};
+
+// ---------- combining groups for analysis ----------
+let combineMode = "avg";
+function analysisSites(){
+  const list = sorted();
+  if (combineMode === "all") return list;
+  const by = new Map();
+  list.forEach(s => { const k = siteKeyOf(s); (by.get(k) || by.set(k, []).get(k)).push(s); });
+  return [...by.values()].map(recs => {
+    if (recs.length === 1) return recs[0];
+    const cs = recs.map(compute), out = {};
+    const keys = new Set(cs.flatMap(c => Object.keys(c)));
+    keys.forEach(k => { const vals = cs.map(c=>c[k]).filter(v => typeof v === "number" && Number.isFinite(v)); if (vals.length) out[k] = mean(vals); });
+    const planned = setup.sites.find(t => t.key === recs[0].siteKey);
+    const d = planned && planned.dist!=null ? planned.dist : mean(recs.map(r=>num(r.dist)).filter(v=>v!=null));
+    return {id: "avg:" + siteKeyOf(recs[0]), name: `${recs[0].name} (${recs.length} groups)`, dist: d, _computed: out,
+      pebLen: recs.flatMap(r=>r.pebLen||[]), pebRound: recs.flatMap(r=>r.pebRound||[]), pebGauge: recs.flatMap(r=>r.pebGauge||[]),
+      conditions: [...new Set(recs.flatMap(r=>r.conditions||[]))], _groups: recs.length};
+  }).sort((a,b)=>(num(a.dist)??1e12)-(num(b.dist)??1e12));
+}
+function renderModeHint(){
+  const raw = sorted().length, n = analysisSites().length;
+  $("modeHint").innerHTML = combineMode === "avg"
+    ? `Each site is tested once, using the average of every group that measured it (${raw} record${raw===1?"":"s"} → ${n} site${n===1?"":"s"}). Bed load pieces from all groups are pooled. This is the fairer test: four groups at one site are not four separate sites.`
+    : `Every group's record counts as its own point (${raw} points). Useful for seeing how much groups differ, but it overstates how many sites you have, so treat the significance result with caution.`;
+}
+document.querySelectorAll("#combineSeg button").forEach(b => b.onclick = () => {
+  combineMode = b.dataset.mode; document.querySelectorAll("#combineSeg button").forEach(x => x.setAttribute("aria-checked", x===b ? "true":"false"));
+  renderChart(); renderSummary(); renderDivBar(); renderBox(); renderModeHint();
+});
+
+// ---------- teacher matrix ----------
+function renderMatrix(){
+  const all = sorted(true), groups = setup.groups.length ? setup.groups : [...new Set(all.map(s=>s.group).filter(Boolean))].sort();
+  const planned = setup.sites.length ? setup.sites.map(t => ({key:t.key, name:t.name, dist:t.dist})) :
+    [...new Map(all.map(s => [siteKeyOf(s), {key:siteKeyOf(s), name:s.name, dist:num(s.dist)}])).values()];
+  if (!groups.length || !planned.length){ $("matrix").innerHTML = `<div class="empty">Set up groups and sites above, or wait for groups to start recording.</div>`; return; }
+  const cell = (k, g) => { const recs = all.filter(s => siteKeyOf(s) === k && (s.group||"") === g);
+    if (!recs.length) return `<span class="no-c" title="Not started">–</span>`;
+    const c = progressOf(recs[recs.length-1]);
+    return c.complete ? `<span class="ok-c">✓ Done</span>` : `<span class="part-c">In progress</span>`; };
+  $("matrix").innerHTML = `<table class="mx"><thead><tr><th>Site</th>${groups.map(g=>`<th>${esc(g)}</th>`).join("")}</tr></thead><tbody>${
+    planned.map(t => `<tr><td><b>${esc(t.name)}</b>${t.dist!=null?` · ${t.dist} m`:""}</td>${groups.map(g=>`<td>${cell(t.key, g)}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+}
+
+
+// ---------- Spearman's rank calculator ----------
+const SP_KEY = "bradshaw-spearman-own-v1";
+let spSrc = "survey";
+let spOwn = (() => { try { return JSON.parse(localStorage.getItem(SP_KEY)) || null; } catch(e){ return null; } })() || {xName:"", yName:"", dir:"1", rows:Array.from({length:6}, () => ({label:"", x:"", y:""}))};
+const SP_VARS = [{k:"dist", label:"Distance from source", unit:"m", dp:0, exp:0}, ...VARS];
+function spFill(){
+  const opts = SP_VARS.map(v => `<option value="${v.k}">${esc(v.label)} (${esc(v.unit)})</option>`).join("");
+  $("spX").innerHTML = opts; $("spY").innerHTML = opts; $("spX").value = "dist"; $("spY").value = "discharge";
+  $("spXName").value = spOwn.xName; $("spYName").value = spOwn.yName; $("spDir").value = spOwn.dir;
+  spRenderRows();
+}
+function spRenderRows(){
+  $("spRows").innerHTML = spOwn.rows.map((r,i) => `<tr><td>${i+1}</td>
+    <td><input data-f="label" data-i="${i}" value="${esc(r.label)}" placeholder="Site ${i+1}" aria-label="Row ${i+1} label"></td>
+    <td><input data-f="x" data-i="${i}" type="number" inputmode="decimal" step="any" value="${esc(r.x)}" aria-label="Row ${i+1} x"></td>
+    <td><input data-f="y" data-i="${i}" type="number" inputmode="decimal" step="any" value="${esc(r.y)}" aria-label="Row ${i+1} y"></td>
+    <td><button class="btn danger small" type="button" data-sprm="${i}" aria-label="Remove row ${i+1}">×</button></td></tr>`).join("");
+}
+function spSave(){ try { localStorage.setItem(SP_KEY, JSON.stringify(spOwn)); } catch(e){} }
+$("spRows").addEventListener("input", e => { const t = e.target; if (t.dataset.f){ spOwn.rows[+t.dataset.i][t.dataset.f] = t.value; spSave(); renderSpearman(); } });
+$("spRows").addEventListener("click", e => { const b = e.target.closest("[data-sprm]"); if (!b) return; spOwn.rows.splice(+b.dataset.sprm, 1); if (!spOwn.rows.length) spOwn.rows.push({label:"",x:"",y:""}); spSave(); spRenderRows(); renderSpearman(); });
+$("spAdd").onclick = () => { spOwn.rows.push({label:"",x:"",y:""}); spSave(); spRenderRows(); $("spRows").lastElementChild.querySelector("input").focus(); };
+$("spClear").onclick = () => { if (!confirm("Clear all the rows you've typed in?")) return; spOwn.rows = Array.from({length:6}, () => ({label:"",x:"",y:""})); spSave(); spRenderRows(); renderSpearman(); };
+["spXName","spYName","spDir"].forEach(id => $(id).addEventListener("input", () => { spOwn.xName = $("spXName").value; spOwn.yName = $("spYName").value; spOwn.dir = $("spDir").value; spSave(); renderSpearman(); }));
+["spX","spY"].forEach(id => $(id).addEventListener("change", renderSpearman));
+document.querySelectorAll("#spSrc button").forEach(b => b.onclick = () => {
+  spSrc = b.dataset.src; document.querySelectorAll("#spSrc button").forEach(x => x.setAttribute("aria-checked", x===b ? "true" : "false"));
+  $("spSurvey").hidden = spSrc !== "survey"; $("spOwn").hidden = spSrc !== "own"; renderSpearman();
+});
+
+function spData(){
+  if (spSrc === "own"){
+    const rows = spOwn.rows.map((r,i) => ({label: r.label.trim() || `Row ${i+1}`, x: num(r.x), y: num(r.y)})).filter(r => r.x != null && r.y != null);
+    return {rows, xName: spOwn.xName.trim() || "x", yName: spOwn.yName.trim() || "y", dir: +spOwn.dir, xdp: 2, ydp: 2};
+  }
+  const vx = SP_VARS.find(v => v.k === $("spX").value), vy = SP_VARS.find(v => v.k === $("spY").value);
+  const val = (s, v) => v.k === "dist" ? num(s.dist) : compute(s)[v.k];
+  const rows = analysisSites().map(s => ({label: s.name, x: val(s, vx), y: val(s, vy)})).filter(r => r.x != null && r.y != null && Number.isFinite(r.x) && Number.isFinite(r.y));
+  let dir = 0;
+  if (vx.k === "dist" && vy.exp) dir = vy.exp; else if (vy.k === "dist" && vx.exp) dir = vx.exp; else if (vx.exp && vy.exp) dir = vx.exp * vy.exp;
+  const nm = v => `${v.label} (${v.unit})`;
+  return {rows, xName: nm(vx), yName: nm(vy), dir, xdp: vx.dp, ydp: vy.dp, same: vx.k === vy.k, bradshaw: vx.k === "dist" || vy.k === "dist"};
+}
+const f3 = v => (Math.round(v*1000)/1000).toFixed(3);
+const fr = v => Number.isInteger(v) ? String(v) : v.toFixed(1);
+function strength(r){ const a = Math.abs(r); return a >= .8 ? "very strong" : a >= .6 ? "strong" : a >= .4 ? "moderate" : a >= .2 ? "weak" : "very weak or no"; }
+
+function renderSpearman(){
+  const out = $("spOut"), D = spData(), n = D.rows.length;
+  if (spSrc === "survey"){
+    const raw = sorted().length;
+    $("spSurveyNote").innerHTML = combineMode === "avg"
+      ? `Using the class average for each site (${n} site${n===1?"":"s"}${groupFilter?`, ${esc(groupFilter)} only`:""}). Change this in the <b>Test the model</b> tab.`
+      : `Using every group's record as a separate point (${raw} records). Change this in the <b>Test the model</b> tab.`;
+  }
+  if (D.same){ out.innerHTML = `<div class="empty">Choose two different variables.</div>`; return; }
+  if (n < 2){ out.innerHTML = `<div class="empty">${spSrc==="own" ? "Type in at least 2 rows with both an x and a y value." : "Record at least 2 sites with both of these measurements."}</div>`; return; }
+
+  const xs = D.rows.map(r=>r.x), ys = D.rows.map(r=>r.y), rx = rankDesc(xs), ry = rankDesc(ys);
+  const tieX = new Set(rx.filter((v,i)=>rx.indexOf(v)!==i)), tieY = new Set(ry.filter((v,i)=>ry.indexOf(v)!==i));
+  const rows = D.rows.map((r,i) => ({...r, rx:rx[i], ry:ry[i], d:rx[i]-ry[i], d2:(rx[i]-ry[i])**2}));
+  const sumD = rows.reduce((t,r)=>t+r.d,0), sumD2 = rows.reduce((t,r)=>t+r.d2,0);
+  const top = 6*sumD2, bottom = n*(n*n-1), frac = top/bottom;
+  const allTied = new Set(rx).size === 1 || new Set(ry).size === 1;
+  const rs = allTied ? null : 1 - frac;
+  const dirWord = D.dir > 0 ? "positive" : D.dir < 0 ? "negative" : null;
+  const xN = esc(D.xName), yN = esc(D.yName);
+  const fmtX = v => fmt(v, D.xdp), fmtY = v => fmt(v, D.ydp);
+
+  // step 1: hypotheses
+  let h = `<div class="step"><h3><span class="n">1</span>Hypotheses</h3>
+    <p><b>Null hypothesis (H<sub>0</sub>):</b> there is no significant correlation between ${xN.toLowerCase()} and ${yN.toLowerCase()}.</p>
+    <p><b>Alternative hypothesis (H<sub>1</sub>):</b> there is a significant ${dirWord ? `<b>${dirWord}</b> ` : ""}correlation between ${xN.toLowerCase()} and ${yN.toLowerCase()}${D.bradshaw && dirWord ? ", as the Bradshaw model predicts" : ""}.</p>
+    ${dirWord ? `<p class="hint">Because a direction is predicted, this is a <b>one-tailed</b> test.</p>` : `<p class="hint">No direction is predicted, so this is a <b>two-tailed</b> test.</p>`}</div>`;
+
+  // step 2: table
+  h += `<div class="step"><h3><span class="n">2</span>Rank both sets of data</h3>
+    <p>Rank each column separately, giving the <b>highest value rank 1</b>. Where values are tied, give each the average of the ranks they share${tieX.size||tieY.size ? ` <span class="tie">(tied ranks are highlighted)</span>` : ""}. Then find the difference (d) between each pair of ranks and square it.</p>
+    <div class="scroll"><table class="sp"><thead><tr><th>${spSrc==="own"?"Label":"Site"}</th><th>${xN}</th><th>Rank x</th><th>${yN}</th><th>Rank y</th><th>d</th><th>d²</th></tr></thead><tbody>${
+      rows.map(r => `<tr><td>${esc(r.label)}</td><td>${fmtX(r.x)}</td><td class="${tieX.has(r.rx)?"tie":""}">${fr(r.rx)}</td><td>${fmtY(r.y)}</td><td class="${tieY.has(r.ry)?"tie":""}">${fr(r.ry)}</td><td>${fr(r.d)}</td><td>${Number.isInteger(r.d2)?r.d2:r.d2.toFixed(2)}</td></tr>`).join("")
+    }</tbody><tfoot><tr><td colspan="5">Totals</td><td>Σd = ${fr(Math.round(sumD*100)/100)}</td><td>Σd² = ${Number.isInteger(sumD2)?sumD2:sumD2.toFixed(2)}</td></tr></tfoot></table></div>
+    <p class="hint" style="margin-top:.5rem">Check: Σd should always be 0. If it isn't, a rank has been mixed up.</p></div>`;
+
+  // step 3: formula
+  h += `<div class="step"><h3><span class="n">3</span>Put the numbers into the formula</h3>
+    <div class="formula">r<sub>s</sub> = 1 − <span class="frac"><span>6Σd²</span><span>n(n² − 1)</span></span>
+      &nbsp;&nbsp; where n = ${n}</div>
+    <div class="formula">r<sub>s</sub> = 1 − <span class="frac"><span>6 × ${Number.isInteger(sumD2)?sumD2:sumD2.toFixed(2)}</span><span>${n} × (${n}² − 1)</span></span>
+      = 1 − <span class="frac"><span>${Number.isInteger(top)?top:top.toFixed(2)}</span><span>${n} × ${n*n-1}</span></span>
+      = 1 − <span class="frac"><span>${Number.isInteger(top)?top:top.toFixed(2)}</span><span>${bottom}</span></span></div>
+    <div class="formula">r<sub>s</sub> = 1 − ${f3(frac)} = <b>${rs==null?"–":f3(rs)}</b></div>
+    ${allTied ? `<p class="no-c">Every value in one column is the same, so there's nothing to correlate.</p>` : ""}
+    ${tieX.size||tieY.size ? `<p class="hint">With tied ranks this formula gives a close approximation, which is the standard method for fieldwork write-ups.</p>` : ""}</div>`;
+
+  if (rs == null){ out.innerHTML = h; return; }
+
+  // step 4: describe
+  const sign = rs > 0 ? "positive" : rs < 0 ? "negative" : "no";
+  h += `<div class="step"><h3><span class="n">4</span>Describe the correlation</h3>
+    <div class="bigrs">${f3(rs)}</div>
+    <p>This is a <b>${strength(rs)} ${rs===0?"":sign}</b> correlation. r<sub>s</sub> runs from −1 (perfect negative) through 0 (none) to +1 (perfect positive).</p>
+    <svg viewBox="0 0 600 70" style="width:100%;max-width:600px;display:block" role="img" aria-label="Where rs sits between -1 and +1">
+      <defs><linearGradient id="spg" x1="0" x2="1"><stop offset="0" stop-color="#B03A2E"/><stop offset=".5" stop-color="#C9D6D3"/><stop offset="1" stop-color="#2E6DA4"/></linearGradient></defs>
+      <rect x="20" y="22" width="560" height="14" rx="7" fill="url(#spg)"/>
+      ${[-1,-.5,0,.5,1].map(t => `<text x="${20+(t+1)/2*560}" y="58" text-anchor="middle" font-size="13" fill="var(--muted)" font-family="Atkinson Hyperlegible, sans-serif">${t>0?"+":""}${t}</text>`).join("")}
+      <path d="M${20+(rs+1)/2*560},18 l-8,-12 h16 z" fill="var(--ink)"/>
+    </svg></div>`;
+
+  // step 5: significance
+  const c95 = n < 5 ? null : n > 30 ? (dirWord ? 1.645 : 1.96)/Math.sqrt(n-1) : (dirWord ? CRIT[n] : CRIT2T[n]);
+  const c99 = dirWord ? (n < 5 ? null : n > 30 ? 2.326/Math.sqrt(n-1) : CRIT99[n]) : null;
+  const a = Math.abs(rs), rightWay = !dirWord || Math.sign(rs) === D.dir;
+  let decision, cls;
+  if (c95 == null){ decision = `With only ${n} pairs, the test can't show significance. You need at least 5.`; cls = "v-na"; }
+  else if (!rightWay){ decision = `The correlation is ${sign}, the opposite of what was predicted, so H<sub>1</sub> is not supported. Accept the null hypothesis.`; cls = "v-no"; }
+  else if (c99 != null && a >= c99){ decision = `|r<sub>s</sub>| = ${f3(a)} is greater than the 99% critical value (${c99.toFixed(3)}). Reject the null hypothesis: there is less than a 1% chance this correlation happened by chance.`; cls = "v-yes"; }
+  else if (a >= c95){ decision = `|r<sub>s</sub>| = ${f3(a)} is greater than the 95% critical value (${c95.toFixed(3)}). Reject the null hypothesis: there is less than a 5% chance this correlation happened by chance.`; cls = "v-yes"; }
+  else { decision = `|r<sub>s</sub>| = ${f3(a)} is less than the 95% critical value (${c95.toFixed(3)}). Accept the null hypothesis: the correlation could have happened by chance.`; cls = "v-weak"; }
+  h += `<div class="step"><h3><span class="n">5</span>Is it significant?</h3>
+    <p>Compare r<sub>s</sub> with the critical value for n = ${n} (${dirWord ? "one-tailed" : "two-tailed"}).</p>
+    <div class="scroll" style="max-width:440px"><table><thead><tr><th>Significance level</th><th>Critical value</th></tr></thead><tbody>
+      <tr><td>95% (0.05)</td><td>${c95==null?"–":c95.toFixed(3)}</td></tr>
+      ${dirWord ? `<tr><td>99% (0.01)</td><td>${c99==null?"–":c99.toFixed(3)}</td></tr>` : ""}</tbody></table></div>
+    <p style="margin-top:.8rem"><span class="verdict ${cls}">${cls==="v-yes"?"Significant":cls==="v-na"?"Too few pairs":"Not significant"}</span></p>
+    <p>${decision}</p></div>`;
+
+  // step 6: sentence
+  const level = cls==="v-yes" ? (c99!=null && a>=c99 ? "the 99% level" : "the 95% level") : null;
+  h += `<div class="step"><h3><span class="n">6</span>Summing up</h3>
+    <p>“There is a ${strength(rs)} ${rs===0?"":sign} correlation (r<sub>s</sub> = ${f3(rs)}, n = ${n}) between ${xN.toLowerCase()} and ${yN.toLowerCase()}. ${
+      level ? `This is significant at ${level}, so the null hypothesis is rejected.` : c95==null ? "There are too few pairs to test significance." : "This is not significant at the 95% level, so the null hypothesis is accepted."}${
+      D.bradshaw && dirWord && level && rightWay ? " This supports the Bradshaw model." : D.bradshaw && dirWord && c95!=null ? " This does not support the Bradshaw model." : ""}”</p>
+    <p class="hint">Use this as a check on your own conclusion, then explain <b>why</b> the pattern exists in your own words.</p>
+    <div class="actions"><button class="btn ghost small" type="button" id="spCsv">Download this table (CSV)</button></div>
+    <div class="msg" id="spMsg" role="status"></div></div>`;
+  out.innerHTML = h;
+
+  $("spCsv").onclick = async () => {
+    const q = v => { const t = String(v ?? ""); return /[",\n]/.test(t) ? `"${t.replace(/"/g,'""')}"` : t; };
+    const lines = [["Label", D.xName, "Rank x", D.yName, "Rank y", "d", "d squared"].map(q).join(","),
+      ...rows.map(r => [r.label, r.x, r.rx, r.y, r.ry, r.d, r.d2].map(q).join(",")),
+      ["Totals","","","","",sumD,sumD2].map(q).join(","), "", `n,${n}`, `rs,${f3(rs)}`, `Critical value 95%,${c95==null?"":c95.toFixed(3)}`, `Result,${cls==="v-yes"?"Significant":"Not significant"}`];
+    const m = $("spMsg");
+    try { await saveFile("spearmans-rank.csv", lines.join("\n"), "text/csv"); m.className="msg ok"; m.textContent="Saved."; }
+    catch(err){ if (err && err.code==="declined") return; m.className="msg err"; m.textContent="Downloading isn't available here."; }
+  };
+}
+spFill();
+
+
+// ---------- export / import survey files ----------
+$("exportBtn").onclick = async () => {
+  const m = $("xferMsg"); m.className = "msg"; m.textContent = "Preparing the file…";
+  try {
+    const list = sorted(), outSites = [];
+    for (const s of list){
+      const photos = [];
+      for (const p of (s.photos||[])){
+        try {
+          if (p.local){ const b = await idbGet(p.local); if (b) photos.push({caption:p.caption, data: await blobToDataUrl(b)}); }
+          else if (p.data) photos.push({caption:p.caption, data:p.data});
+          else if (p.id){ const r = await fetch("/_blob/" + p.id); if (r.ok) photos.push({caption:p.caption, data: await blobToDataUrl(await r.blob())}); }
+        } catch(_){}
+      }
+      outSites.push({...s, photos});
+    }
+    const groups = [...new Set(list.map(s => s.group).filter(Boolean))];
+    const file = {format:"bradshaw-river-survey", version:1, exported:new Date().toISOString(), groups, calibration: cal, sites: outSites};
+    const tag = (groups.length === 1 ? groups[0] : groupFilter || "all-groups").replace(/[^A-Za-z0-9]+/g,"-");
+    await saveFile(`river-survey-${tag}-${new Date().toISOString().slice(0,10)}.json`, JSON.stringify(file), "application/json");
+    m.className = "msg ok"; m.textContent = `Exported ${outSites.length} site${outSites.length===1?"":"s"}.`;
+  } catch(err){ if (err && err.code === "declined"){ m.textContent = ""; return; } m.className = "msg err"; m.textContent = "Couldn't create the file."; }
+};
+$("importFile").addEventListener("change", async e => {
+  const files = [...e.target.files]; e.target.value = ""; if (!files.length) return;
+  const m = $("xferMsg"); m.className = "msg";
+  if (!canChange()){ m.className = "msg err"; m.textContent = "The survey is locked or read-only, so files can't be imported."; return; }
+  let added = 0, updated = 0, bad = 0, photoFail = 0;
+  for (const f of files){
+    let data; try { data = JSON.parse(await f.text()); } catch(_){ bad++; continue; }
+    if (!data || data.format !== "bradshaw-river-survey" || !Array.isArray(data.sites)){ bad++; continue; }
+    for (let i = 0; i < data.sites.length; i++){
+      const src = data.sites[i]; if (!src || typeof src !== "object" || !src.name) continue;
+      m.textContent = `Importing ${f.name}: site ${i+1} of ${data.sites.length}…`;
+      const site = {...src, id: typeof src.id === "string" && src.id ? src.id : uid()};
+      // line up with this survey's planned sites by name if the key doesn't match
+      if (!setup.sites.some(t => t.key === site.siteKey)){
+        const t = setup.sites.find(t => t.name.trim().toLowerCase() === String(site.name).trim().toLowerCase());
+        site.siteKey = t ? t.key : null; if (t && t.dist != null) site.dist = t.dist;
+      }
+      const photos = [];
+      for (const p of (Array.isArray(src.photos) ? src.photos : [])){
+        if (!p || typeof p.data !== "string" || !p.data.startsWith("data:image/")) { if (p && p.id) photos.push({id:p.id, caption:p.caption||""}); continue; }
+        try {
+          const blob = dataUrlToBlob(p.data);
+          if (assets){ const up = await withTimeout(assets.upload(blob, {type: blob.type || "image/jpeg"}), 60000); photos.push({id: up.id, caption: p.caption||""}); }
+          else if (LOCAL_PHOTOS){ const key = uid(); await idbPut(key, blob); photos.push({local:key, caption:p.caption||""}); }
+          else photoFail++;
+        } catch(_){ photoFail++; }
+      }
+      site.photos = photos;
+      const exists = sites.some(x => x.id === site.id);
+      await persist(site); exists ? updated++ : added++;
+    }
+  }
+  m.className = bad ? "msg err" : "msg ok";
+  m.textContent = `Imported ${added} new site${added===1?"":"s"}${updated?` and updated ${updated}`:""}.` + (photoFail ? ` ${photoFail} photo${photoFail===1?"":"s"} couldn't be added.` : "") + (bad ? ` ${bad} file${bad===1?" wasn't":"s weren't"} a survey file.` : "");
+});
+function applyXfer(){
+  const canImport = !HAS_CLAUDE || (isTeacher && !!db);
+  $("importLbl").hidden = !canImport;
+  $("xferIntro").textContent = HAS_CLAUDE
+    ? (canImport ? "Export saves every site, including photos, as one file. Import adds sites from files exported by the offline iPad app; importing the same file twice updates the sites rather than duplicating them." : "Export saves every site, including photos, as one file.")
+    : "Back at school, tap Export and AirDrop the file to your teacher. Import lets one iPad combine files from several groups.";
+}
+
+// ---------- tabs ----------
+function showTab(name){
+  document.querySelectorAll(".tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.tab===name ? "true":"false"));
+  document.querySelectorAll(".panel").forEach(p => p.classList.toggle("on", p.id==="p-"+name));
+  if (name==="test"){ renderModeHint(); renderChart(); renderSummary(); renderDivBar(); renderBox(); }
+  if (name==="check") renderCheck();
+  if (name==="spear") renderSpearman();
+  if (name==="teacher") renderTeacher();
+}
+document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => showTab(b.dataset.tab));
+
+function renderAll(){
+  setStatus(); renderGroupSel(); renderStrip(); renderTable(); renderGallery();
+  if ($("p-test").classList.contains("on")){ renderModeHint(); renderChart(); renderSummary(); renderDivBar(); renderBox(); }
+  if ($("p-check").classList.contains("on")) renderCheck();
+  if ($("p-spear").classList.contains("on") && !$("p-spear").contains(document.activeElement)) renderSpearman();
+  if ($("p-teacher").classList.contains("on")) renderTeacher();
+}
+
+// ---------- boot ----------
+setPebbles([]); sites = loadLocal(); applySetup(); fillCal(); applyLock(); renderAll(); renderLive(); restoreDraft();
+if (!HAS_CLAUDE && location.protocol.startsWith("http") && typeof fetch === "function"){
+  fetch("setup.json", {cache:"no-cache"}).then(r => r.ok ? r.json() : null).then(d => {
+    if (!d) return;
+    const groups = Array.isArray(d.groups) ? d.groups.map(String).filter(Boolean) : [];
+    const list = Array.isArray(d.sites) ? d.sites.filter(t => t && t.name).map(t => ({key: String(t.key || t.name), name: String(t.name), dist: num(t.dist)})) : [];
+    setup = {groups, sites: list}; applySetup();
+    if (d.calibration && num(d.calibration.a) != null && cal.a == null){ cal = {a:num(d.calibration.a), b:num(d.calibration.b)||0, unit: d.calibration.unit==="min"?"min":"s"}; try { localStorage.setItem(CAL_KEY, JSON.stringify(cal)); } catch(e){} fillCal(); }
+    renderAll(); renderLive();
+  }).catch(()=>{});
+}
+if (HAS_CLAUDE){
+  window.claude.use("user").then(async u => { isTeacher = u ? await u.canEdit() : false; applyLock(); renderAll(); }).catch(()=>{});
+  window.claude.use("db").then(d => {
+    if (!d) { setStatus(); return; }
+    db = d; shared = true;
+    window.claude.use("assets").then(a => { assets = a; if (!a) $("photoBox").hidden = true; }).catch(() => { $("photoBox").hidden = true; });
+    db.doc("config/meter").onSnapshot(snap => {
+      if (snap.exists){ const c = snap.data(); if (c && num(c.a) != null){ cal = {a:num(c.a), b:num(c.b)||0, unit:c.unit==="min"?"min":"s"};
+        try { localStorage.setItem(CAL_KEY, JSON.stringify(cal)); } catch(e){} fillCal(); renderLive(); renderAll(); } }
+    }, () => {});
+    db.doc("config/setup").onSnapshot(snap => {
+      if (snap.exists && snap.data()){ const d = snap.data(); setup = {groups: Array.isArray(d.groups)?d.groups.map(String):[], sites: Array.isArray(d.sites)?d.sites.filter(t=>t&&t.key&&t.name).map(t=>({key:String(t.key), name:String(t.name), dist:num(t.dist)})):[]}; applySetup(); renderAll(); }
+    }, () => {});
+    db.doc("config/lock").onSnapshot(snap => { locked = !!(snap.exists && snap.data() && snap.data().locked); applyLock(); renderAll(); }, () => {});
+    db.collection("sites").onSnapshot(snap => {
+      mergeServer(snap.docs.map(x => ({...x.data(), id:x.id})));
+      renderAll(); flush();
+    }, () => { setStatus(); });
+    applyLock(); flush();
+  }).catch(() => setStatus());
+}
+})();
+</script>
+<script>
+if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
+  window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+}
+</script>
+</body>
+</html>
